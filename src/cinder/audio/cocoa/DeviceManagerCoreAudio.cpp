@@ -185,17 +185,14 @@ DeviceRef DeviceManagerCoreAudio::getDefaultOutput()
 {
 	::AudioObjectPropertyAddress propertyAddress = getAudioObjectPropertyAddress( kAudioHardwarePropertyDefaultOutputDevice );
 	auto defaultOutputId = getAudioObjectProperty<::AudioDeviceID>( kAudioObjectSystemObject, propertyAddress );
-	string name = getAudioObjectPropertyString( defaultOutputId, kAudioObjectPropertyName );
-	return Device::findOutputByName( name );
+	return findDeviceByKey( DeviceManagerCoreAudio::keyForDeviceId( defaultOutputId ) );
 }
 
 DeviceRef DeviceManagerCoreAudio::getDefaultInput()
 {
 	::AudioObjectPropertyAddress propertyAddress = getAudioObjectPropertyAddress( kAudioHardwarePropertyDefaultInputDevice );
 	auto defaultInputId = getAudioObjectProperty<::AudioDeviceID>( kAudioObjectSystemObject, propertyAddress );
-
-	string name = getAudioObjectPropertyString( defaultInputId, kAudioObjectPropertyName );
-	return Device::findInputByName( name );
+	return findDeviceByKey( DeviceManagerCoreAudio::keyForDeviceId( defaultInputId ) );
 }
 
 string DeviceManagerCoreAudio::getName( const DeviceRef &device )
