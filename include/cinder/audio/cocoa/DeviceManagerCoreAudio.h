@@ -36,7 +36,7 @@ class DeviceManagerCoreAudio : public DeviceManager {
 	DeviceManagerCoreAudio();
 	~DeviceManagerCoreAudio();
 
-    void refreshDevices();  
+	void refreshDevices();  
 	const std::vector<DeviceRef>& getDevices()									override;
 	DeviceRef getDefaultOutput()												override;
 	DeviceRef getDefaultInput()													override;
@@ -68,13 +68,12 @@ class DeviceManagerCoreAudio : public DeviceManager {
 	static std::string keyForDeviceId( ::AudioDeviceID deviceId );
     
     ::AudioDeviceID deviceIdForKey( const std::string &key ) const {
-        return atoi(key.c_str());
+        return std::stoi( key );
     }
     ::AudioDeviceID deviceIdForDevice( const DeviceRef &device ) const {
         return deviceIdForKey( device->getKey() );
     }
 
-//	std::map<DeviceRef, ::AudioDeviceID>	mDeviceIds;
 	DeviceRef								mCurrentOutputDevice, mCurrentInputDevice;
 	::AudioObjectPropertyListenerBlock		mOutputDeviceListenerBlock, mInputDeviceListenerBlock;
 

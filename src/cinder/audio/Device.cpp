@@ -83,14 +83,14 @@ const vector<DeviceRef>& Device::getDevices()
 vector<DeviceRef> Device::getOutputDevices()
 {
 	vector<DeviceRef> result;
-    auto devices = getDevices();
-	for( const auto &dev : devices ) {
-        try {
-            if( dev && dev->getNumOutputChannels() > 0 )
-                result.push_back( dev );
-        } catch (const AudioDeviceExc & e) {
-            continue;
-        }
+	auto devices = getDevices();
+	for ( const auto &dev : devices ) {
+		try {
+			if( dev && dev->getNumOutputChannels() > 0 )
+				result.push_back( dev );
+		} catch (const AudioDeviceExc & e) {
+			continue;
+		}
 	}
 
 	return result;
@@ -100,7 +100,7 @@ vector<DeviceRef> Device::getInputDevices()
 {
 	vector<DeviceRef> result;
 	for( const auto &dev : getDevices() ) {
-		if( dev->getNumInputChannels() > 0 )
+		if( dev && dev->getNumInputChannels() > 0 )
 			result.push_back( dev );
 	}
 
@@ -214,16 +214,6 @@ DeviceRef DeviceManager::findDeviceByKey( const string &key )
 	}
 
 	return DeviceRef();
-}
-
-DeviceRef DeviceManager::findOutputDeviceByKey( const string &key )
-{
-    for( const auto &device : getDevices() ) {
-        if( device->getNumOutputChannels() > 0 && device->getKey() == key )
-            return device;
-    }
-
-    return DeviceRef();
 }
 
 DeviceRef DeviceManager::addDevice( const string &key )
