@@ -21,6 +21,7 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "cinder/audio/cocoa/ContextAudioUnit.h"
 #include "cinder/audio/cocoa/DeviceManagerCoreAudio.h"
 #include "cinder/cocoa/CinderCocoa.h"
 #include "cinder/audio/Context.h"
@@ -445,16 +446,23 @@ void DeviceManagerCoreAudio::refreshDevices()
 		auto device = addDevice( key );
 	}
 	// removing active device
-	/*if ( mCurrentOutputDevice ) {
+	if ( mCurrentOutputDevice ) {
 		if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceIdForDevice( mCurrentOutputDevice ) ); it != removedDevices.end()) {
 			auto newActiveDevice = mCurrentOutputDevice;
-			for ( ::AudioDeviceID &deviceId : deviceIds ) {
-				if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceId ); it == removedDevices.end()) {
-					newActiveDevice = findDeviceByKey( std::to_string( deviceId ) );
+			for ( const auto &device : Device::getOutputDevices() ) {
+				auto deviceId = deviceIdForDevice( device );
+			    if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceId ); it == removedDevices.end()) {
+					newActiveDevice = findDeviceByKey( keyForDeviceId( deviceId ) );
+					break;
 				}
 			}
+            auto ctx = ci::audio::master();
+			auto device = newActiveDevice;
+			ci::audio::OutputDeviceNodeRef output = ctx->createOutputDeviceNode( device );
+			auto outputDeviceNodeAu = dynamic_pointer_cast<OutputDeviceNodeAudioUnit>( output );
+			setCurrentOutputDevice( newActiveDevice, outputDeviceNodeAu->getAudioUnit() );
 		}
-	}*/
+	}
 	// remove devices
 	for ( ::AudioDeviceID &deviceId : removedDevices ) {
 		CI_LOG_W("Removing device " + std::to_string(deviceId));
