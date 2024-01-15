@@ -403,6 +403,7 @@ void DeviceManagerCoreAudio::unregisterPropertyListeners( const DeviceRef &devic
 	// data source (ex. internal speakers, headphones)
 	::AudioObjectPropertyAddress dataSourceAddress = getAudioObjectPropertyAddress( kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeOutput );
 	OSStatus status = ::AudioObjectRemovePropertyListenerBlock( deviceId, &dataSourceAddress, currentQueue, listenerBlock );
+	// still might get called for disconnected device, just to be sure
 //	CI_VERIFY( status == noErr );
 
 	// device samplerate
@@ -441,7 +442,7 @@ void DeviceManagerCoreAudio::refreshDevices()
 
 	// add devices
 	for ( ::AudioDeviceID &deviceId : addedDevices ) {
-		CI_LOG_W("Adding device " + std::to_string(deviceId));
+		CI_LOG_I("Connected device " + std::to_string(deviceId));
 		string key = keyForDeviceId( deviceId );
 		auto device = addDevice( key );
 	}
@@ -475,7 +476,7 @@ void DeviceManagerCoreAudio::refreshDevices()
     
 	// remove devices
 	for ( ::AudioDeviceID &deviceId : removedDevices ) {
-		CI_LOG_W("Removing device " + std::to_string(deviceId));
+		CI_LOG_I("Disconnected device " + std::to_string(deviceId));
 		string key = keyForDeviceId( deviceId );
 		if ( auto it = find_if( mDevices.begin(), mDevices.end(), [&key] ( auto device ) {
 			return key == device->getKey();
