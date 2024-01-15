@@ -83,9 +83,14 @@ const vector<DeviceRef>& Device::getDevices()
 vector<DeviceRef> Device::getOutputDevices()
 {
 	vector<DeviceRef> result;
-	for( const auto &dev : getDevices() ) {
-		if( dev->getNumOutputChannels() > 0 )
-			result.push_back( dev );
+	auto devices = getDevices();
+	for ( const auto &dev : devices ) {
+		try {
+			if( dev && dev->getNumOutputChannels() > 0 )
+				result.push_back( dev );
+		} catch (const AudioDeviceExc & e) {
+			continue;
+		}
 	}
 
 	return result;
@@ -95,8 +100,12 @@ vector<DeviceRef> Device::getInputDevices()
 {
 	vector<DeviceRef> result;
 	for( const auto &dev : getDevices() ) {
-		if( dev->getNumInputChannels() > 0 )
-			result.push_back( dev );
+		try {
+			if( dev && dev->getNumInputChannels() > 0 )
+				result.push_back( dev );
+		} catch (const AudioDeviceExc & e) {
+			continue;
+		}
 	}
 
 	return result;
