@@ -417,7 +417,7 @@ void DeviceManagerCoreAudio::unregisterPropertyListeners( const DeviceRef &devic
 
 	Block_release( listenerBlock );
 }
-
+    
 void DeviceManagerCoreAudio::refreshDevices()
 {
 	CI_LOG_I("DeviceManagerCoreAudio::refreshDevices");
@@ -445,17 +445,26 @@ void DeviceManagerCoreAudio::refreshDevices()
 		string key = keyForDeviceId( deviceId );
 		auto device = addDevice( key );
 	}
-	// removing active device
+	// removing active output device
 	if ( mCurrentOutputDevice ) {
 		if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceIdForDevice( mCurrentOutputDevice ) ); it != removedDevices.end()) {
 			auto newActiveDevice = mCurrentOutputDevice;
-			for ( const auto &device : Device::getOutputDevices() ) {
-				auto deviceId = deviceIdForDevice( device );
-			    if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceId ); it == removedDevices.end()) {
-					newActiveDevice = findDeviceByKey( keyForDeviceId( deviceId ) );
-					break;
-				}
-			}
+            
+            // check if default output is still available. If not, switch to the first available output
+            if ( find_if( deviceIds.begin(), deviceIds.end(), [] ( auto deviceId ) {
+                return std::to_string( deviceId ) == Device::getDefaultOutput()->getKey();
+            }) != deviceIds.end()) {
+                newActiveDevice = Device::getDefaultOutput();
+            }
+            else {
+                for ( const auto &device : Device::getOutputDevices() ) {
+                    auto deviceId = deviceIdForDevice( device );
+                    if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceId ); it == removedDevices.end()) {
+                        newActiveDevice = findDeviceByKey( keyForDeviceId( deviceId ) );
+                        break;
+                    }
+                }
+            }
             auto ctx = ci::audio::master();
 			auto device = newActiveDevice;
 			ci::audio::OutputDeviceNodeRef output = ctx->createOutputDeviceNode( device );
@@ -463,6 +472,7 @@ void DeviceManagerCoreAudio::refreshDevices()
 			setCurrentOutputDevice( newActiveDevice, outputDeviceNodeAu->getAudioUnit() );
 		}
 	}
+    
 	// remove devices
 	for ( ::AudioDeviceID &deviceId : removedDevices ) {
 		CI_LOG_W("Removing device " + std::to_string(deviceId));
