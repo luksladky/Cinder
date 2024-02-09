@@ -54,10 +54,10 @@ UInt32 getAudioObjectPropertyDataSize( ::AudioObjectID objectId, ::AudioObjectPr
 	UInt32 result = 0;
 	OSStatus status = ::AudioObjectGetPropertyDataSize( objectId, &propertyAddress, qualifierDataSize, qualifierData, &result );
 	if ( status != noErr ) {
-		CI_LOG_W("Issue detected");
-		throw AudioDeviceExc("OOPS");
+		CI_LOG_W("Disconnected device detected in getAudioObjectPropertyDataSize");
+		throw AudioDeviceExc("Disconnected device detected in getAudioObjectPropertyDataSize");
 	}
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 
 	return result;
 }
@@ -65,7 +65,11 @@ UInt32 getAudioObjectPropertyDataSize( ::AudioObjectID objectId, ::AudioObjectPr
 void getAudioObjectPropertyData( ::AudioObjectID objectId, ::AudioObjectPropertyAddress& propertyAddress, UInt32 dataSize, void *data, UInt32 qualifierDataSize = 0, const void *qualifierData = NULL )
 {
 	OSStatus status = ::AudioObjectGetPropertyData( objectId, &propertyAddress, qualifierDataSize, qualifierData, &dataSize, data );
-	CI_VERIFY( status == noErr );
+	if ( status != noErr ) {
+		CI_LOG_W("Disconnected device detected in getAudioObjectPropertyData");
+		throw AudioDeviceExc("Disconnected device detected in getAudioObjectPropertyData");
+	}
+	// CI_VERIFY( status == noErr );
 }
 
 string getAudioObjectPropertyString( ::AudioObjectID objectId, ::AudioObjectPropertySelector propertySelector )
@@ -78,7 +82,11 @@ string getAudioObjectPropertyString( ::AudioObjectID objectId, ::AudioObjectProp
 	UInt32 cfStringSize = sizeof( CFStringRef );
 
 	OSStatus status = ::AudioObjectGetPropertyData( objectId, &property, 0, NULL, &cfStringSize, &resultCF );
-	CI_VERIFY( status == noErr );
+	if ( status != noErr ) {
+		CI_LOG_W("Disconnected device detected in getAudioObjectPropertyData");
+		throw AudioDeviceExc("Disconnected device detected in getAudioObjectPropertyData");
+	}	
+	// CI_VERIFY( status == noErr );
 
 	string result = ci::cocoa::convertCfString( resultCF );
 	CFRelease( resultCF );
@@ -105,7 +113,7 @@ void setAudioObjectProperty( ::AudioObjectID objectId, ::AudioObjectPropertyAddr
 {
 	UInt32 dataSize = sizeof( PropT );
 	OSStatus status = ::AudioObjectSetPropertyData( objectId, &propertyAddress, qualifierDataSize, qualifierData, dataSize, &data );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 }
 
 template<typename PropT>
@@ -115,7 +123,7 @@ PropT getAudioObjectProperty( ::AudioObjectID objectId, ::AudioObjectPropertyAdd
 	UInt32 resultSize = sizeof( result );
 	
 	OSStatus status = ::AudioObjectGetPropertyData( objectId, &propertyAddress, qualifierDataSize, qualifierData, &resultSize, &result );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 
 	return result;
 }
@@ -348,17 +356,17 @@ void DeviceManagerCoreAudio::registerPropertyListeners( DeviceRef device, ::Audi
 	// data source (ex. internal speakers, headphones)
 	::AudioObjectPropertyAddress dataSourceAddress = getAudioObjectPropertyAddress( kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeOutput );
 	OSStatus status = ::AudioObjectAddPropertyListenerBlock( deviceId, &dataSourceAddress, currentQueue, listenerBlock );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 
 	// device samplerate
 	::AudioObjectPropertyAddress samplerateAddress = getAudioObjectPropertyAddress( kAudioDevicePropertyNominalSampleRate );
 	status = ::AudioObjectAddPropertyListenerBlock( deviceId, &samplerateAddress, currentQueue, listenerBlock );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 
 	// frames per block
 	::AudioObjectPropertyAddress frameSizeAddress = getAudioObjectPropertyAddress( kAudioDevicePropertyBufferFrameSize );
 	status = ::AudioObjectAddPropertyListenerBlock( deviceId, &frameSizeAddress, currentQueue, listenerBlock );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 
 	if( isOutput )
 		mOutputDeviceListenerBlock = Block_copy( listenerBlock );
