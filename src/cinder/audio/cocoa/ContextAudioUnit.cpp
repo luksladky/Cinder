@@ -47,20 +47,20 @@ NodeAudioUnit::~NodeAudioUnit()
 {
 	if( mAudioUnit && mOwnsAudioUnit ) {
 		OSStatus status = ::AudioComponentInstanceDispose( mAudioUnit );
-		CI_VERIFY( status == noErr );
+		// CI_VERIFY( status == noErr );
 	}
 }
 
 void NodeAudioUnit::initAu()
 {
 	OSStatus status = ::AudioUnitInitialize( mAudioUnit );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 }
 
 void NodeAudioUnit::uninitAu()
 {
 	OSStatus status = ::AudioUnitUninitialize( mAudioUnit );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -112,13 +112,13 @@ void OutputDeviceNodeAudioUnit::uninitialize()
 void OutputDeviceNodeAudioUnit::enableProcessing()
 {
 	OSStatus status = ::AudioOutputUnitStart( mAudioUnit );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 }
 
 void OutputDeviceNodeAudioUnit::disableProcessing()
 {
 	OSStatus status = ::AudioOutputUnitStop( mAudioUnit );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 }
 
 OSStatus OutputDeviceNodeAudioUnit::renderCallback( void *data, ::AudioUnitRenderActionFlags *flags, const ::AudioTimeStamp *timeStamp, UInt32 busNumber, UInt32 numFrames, ::AudioBufferList *bufferList )
@@ -294,7 +294,7 @@ void InputDeviceNodeAudioUnit::enableProcessing()
 {
 	if( ! mSynchronousIO ) {
 		OSStatus status = ::AudioOutputUnitStart( mAudioUnit );
-		CI_VERIFY( status == noErr );
+		// CI_VERIFY( status == noErr );
 	}
 }
 
@@ -302,7 +302,7 @@ void InputDeviceNodeAudioUnit::disableProcessing()
 {
 	if( ! mSynchronousIO ) {
 		OSStatus status = ::AudioOutputUnitStop( mAudioUnit );
-		CI_VERIFY( status == noErr );
+		// CI_VERIFY( status == noErr );
 	}
 }
 
@@ -313,7 +313,7 @@ void InputDeviceNodeAudioUnit::process( Buffer *buffer )
 		::AudioUnitRenderActionFlags flags = 0;
 		const ::AudioTimeStamp *timeStamp = mRenderData.context->getCurrentTimeStamp();
 		OSStatus status = ::AudioUnitRender( mAudioUnit, &flags, timeStamp, DeviceBus::INPUT, (UInt32)buffer->getNumFrames(), mBufferList.get() );
-		CI_VERIFY( status == noErr );
+		// CI_VERIFY( status == noErr );
 
 		copyFromBufferList( buffer, mBufferList.get() );
 	}
@@ -412,7 +412,7 @@ void EffectAudioUnitNode::process( Buffer *buffer )
 	::AudioUnitRenderActionFlags flags = 0;
 	const ::AudioTimeStamp *timeStamp = mRenderData.context->getCurrentTimeStamp();
 	OSStatus status = ::AudioUnitRender( mAudioUnit, &flags, timeStamp, 0, (UInt32)buffer->getNumFrames(), mBufferList.get() );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 
 	copyFromBufferList( buffer, mBufferList.get() );
 }

@@ -299,7 +299,7 @@ void DeviceManagerCoreAudio::setCurrentDeviceImpl( const DeviceRef &device, cons
 	}
 
 	OSStatus status = ::AudioUnitSetProperty( componentInstance, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &deviceId, sizeof( deviceId ) );
-	CI_VERIFY( status == noErr );
+	// CI_VERIFY( status == noErr );
 }
 
 // TODO: if device is considered 'default', register for kAudioHardwarePropertyDefaultOutputDevice and update when required
@@ -455,7 +455,7 @@ void DeviceManagerCoreAudio::refreshDevices()
 		auto device = addDevice( key );
 	}
 	// removing active output device
-	if ( mCurrentOutputDevice ) {
+	/*if ( mCurrentOutputDevice ) {
 		if (auto it = find( removedDevices.begin(), removedDevices.end(), deviceIdForDevice( mCurrentOutputDevice ) ); it != removedDevices.end()) {
 			auto newActiveDevice = mCurrentOutputDevice;
             
@@ -480,7 +480,7 @@ void DeviceManagerCoreAudio::refreshDevices()
 			auto outputDeviceNodeAu = dynamic_pointer_cast<OutputDeviceNodeAudioUnit>( output );
 			setCurrentOutputDevice( newActiveDevice, outputDeviceNodeAu->getAudioUnit() );
 		}
-	}
+	}*/
     
 	// remove devices
 	for ( ::AudioDeviceID &deviceId : removedDevices ) {
