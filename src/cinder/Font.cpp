@@ -507,8 +507,49 @@ Font::Glyph Font::getGlyphChar( char c ) const
 	return result;
 }
 
+vector<Font::Glyph> Font::getAllGlyphs() const
+{
+	vector<Font::Glyph> result;
+	
+	// Get the CGFont reference from the current font object
+	CGFontRef cgFontRef = this->getCgFontRef();
+
+	// Create a CTFontRef from CGFontRef
+    CTFontRef ctFont = CTFontCreateWithGraphicsFont(cgFontRef, 0, nullptr, nullptr);
+    if (!ctFont) {
+        std::cerr << "Failed to create CTFontRef from CGFontRef" << std::endl;
+        return result;  // Return empty if CTFont creation fails
+    }
+	
+	// Get the total number of glyphs available in the font
+	CFIndex glyphCount = CGFontGetNumberOfGlyphs(cgFontRef);
+
+	// Create a buffer to hold Unicode characters
+    std::vector<UniChar> characters(glyphCount);
+	
+	// Iterate over all glyphs and add them to the result
+	for (CGGlyph glyph = 0; glyph < glyphCount; ++glyph) {
+		/*UniChar unicodeChar = 0;  // Initialize with a default value
+
+        // Create a reverse mapping from glyph to character
+        CGGlyph glyphs[] = { glyph };
+        UniChar chars[1];
+        size_t maxChars = 1;
+        
+        if (CTFontGetGlyphsForCharacters(ctFont, chars, glyphs, maxChars)) {
+            unicodeChar = chars[0];
+        }*/
+
+		result.push_back(glyph);
+	}
+
+	return result;
+}
+
 vector<Font::Glyph> Font::getGlyphs( const string &s ) const
 {
+	if (s.empty())
+		return getAllGlyphs();
 	vector<Font::Glyph> result;
 
 	CFRange range = CFRangeMake( 0, 0 );	
@@ -1101,6 +1142,20 @@ FontObj::FontObj( DataSourceRef dataSource, float size )
 	if( ! mCGFont )
 		throw FontInvalidNameExc();
 	mCTFont = ::CTFontCreateWithGraphicsFont( mCGFont, (CGFloat)mSize, 0, 0 );
+    
+    /*std::vector<UniChar> allCharacters;
+    // Get the character set (CFCharacterSet) that the font supports
+    CFCharacterSetRef charSet = CTFontCopyCharacterSet(mCTFont);
+
+    // Iterate over the character set and extract the Unicode characters
+    for (uint32_t c = 0; c <= 0xFFFF; ++c) {
+        if (CFCharacterSetIsLongCharacterMember(charSet, c)) {
+            allCharacters.push_back(c);
+        }
+    }
+
+    // Clean up CF objects
+    CFRelease(charSet);*/
 
 #elif defined( CINDER_MSW_DESKTOP )
 	FontManager::instance(); // force GDI+ init

@@ -76,7 +76,7 @@ TextureFont::TextureFont( const Font &font, const string &supportedChars, const 
 
 	int glyphsWide = floor( mFormat.getTextureWidth() / (glyphExtents.x+3) );
 	int glyphsTall = floor( mFormat.getTextureHeight() / (glyphExtents.y+5) );	
-	uint8_t curGlyphIndex = 0, curTextureIndex = 0;
+	uint32_t curGlyphIndex = 0, curTextureIndex = 0;
 	vec2 curOffset;
 	CGGlyph renderGlyphs[glyphsWide*glyphsTall];
 	CGPoint renderPositions[glyphsWide*glyphsTall];

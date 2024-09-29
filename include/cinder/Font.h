@@ -87,6 +87,7 @@ class CI_API Font {
 
 	Glyph					getGlyphIndex( size_t idx ) const;
 	Glyph					getGlyphChar( char utf8Char ) const;
+	std::vector<Glyph>      getAllGlyphs( ) const;
 	std::vector<Glyph>		getGlyphs( const std::string &utf8String ) const;
 	//! Returns a cinder::Shape2d representing the shape of the glyph at \a glyphIndex
 	Shape2d					getGlyphShape( Glyph glyphIndex ) const;
