@@ -1,4 +1,4 @@
-/*
+﻿/*
  Copyright (c) 2011, The Cinder Project: http://libcinder.org All rights reserved.
  This code is intended for use with the Cinder C++ library: http://libcinder.org
 
@@ -156,8 +156,50 @@ TextureFont::TextureFont( const Font &font, const string &supportedChars, const 
 
 #elif defined( CINDER_MSW_DESKTOP )
 
+set<Font::Glyph> getAllGlyphs(const Font& font)
+{
+	set<Font::Glyph> result;
+	HDC hdc = Font::getGlobalDc();
+	HFONT hFont = font.getHfont();
+	HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+	int charsWritten = 0;
+	std::vector<WCHAR> charCodes;
+	
+	// Iterate through all possible Unicode code points
+	for (DWORD codePoint = 0; codePoint <= 0x10FFFF; codePoint++) {
+		if (codePoint <= 0xFFFF) {
+			// BMP character
+			charCodes.push_back(static_cast<WCHAR>(codePoint));
+			charsWritten += 1;
+		}
+		else {
+			// Surrogate pair
+			charCodes.push_back(static_cast<WCHAR>(0xD800 + ((codePoint - 0x10000) >> 10)));
+			charCodes.push_back(static_cast<WCHAR>(0xDC00 + ((codePoint - 0x10000) & 0x3FF)));
+			charsWritten += 2;
+		}
+	}
+	std::vector<WORD> glyphIndices(charsWritten);
+
+	DWORD res = GetGlyphIndicesW(hdc, charCodes.data(), charsWritten, glyphIndices.data(), GGI_MARK_NONEXISTING_GLYPHS);
+
+	if (res != GDI_ERROR) {
+		for (int i = 0; i < charsWritten; i++) {
+			if (glyphIndices[i] != 0xFFFF) {
+				result.insert(static_cast<Font::Glyph>(glyphIndices[i]));
+			}
+		}
+	}
+
+	SelectObject(hdc, oldFont);
+	return result;
+}
+
 set<Font::Glyph> getNecessaryGlyphs( const Font &font, const string &supportedChars )
 {
+	if (supportedChars.empty())
+		return getAllGlyphs(font);
 	set<Font::Glyph> result;
 
 	GCP_RESULTS gcpResults;
@@ -232,7 +274,7 @@ TextureFont::TextureFont( const Font &font, const string &utf8Chars, const Forma
 
 	int glyphsWide = mFormat.getTextureWidth() / glyphExtents.x;
 	int glyphsTall = mFormat.getTextureHeight() / glyphExtents.y;	
-	uint8_t curGlyphIndex = 0, curTextureIndex = 0;
+	uint32_t curGlyphIndex = 0, curTextureIndex = 0;
 	ivec2 curOffset = ivec2( 0, 0 );
 
 	Channel channel( mFormat.getTextureWidth(), mFormat.getTextureHeight() );
@@ -250,8 +292,12 @@ TextureFont::TextureFont( const Font &font, const string &utf8Chars, const Forma
 			continue;
 		}
 		if( dwBuffSize > bufferSize ) {
+			auto newBufferSize = dwBuffSize > 2 * bufferSize ? dwBuffSize : 2 * bufferSize; // avoid frequent reallocation
+			auto tmp = new BYTE[newBufferSize];
+			for (size_t i = 0; i < bufferSize; ++i)
+				tmp[i] = pBuff[i];
 			delete[] pBuff;
-			pBuff = new BYTE[dwBuffSize];
+			pBuff = tmp;
 			bufferSize = dwBuffSize;
 		}
 		else if( dwBuffSize == 0 ) {

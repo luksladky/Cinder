@@ -2093,7 +2093,7 @@ void TextSpan::renderSelf( Renderer &renderer ) const
 	finishRender( renderer, style );		
 }
 
-std::vector<std::pair<uint16_t,vec2> > TextSpan::getGlyphMeasures() const
+std::vector<std::pair<Font::Glyph,vec2> > TextSpan::getGlyphMeasures() const
 {
 	if( ! mGlyphMeasures ) {		
 		TextBox tbox = TextBox().font( *getFont() ).text( mString );
@@ -2108,8 +2108,7 @@ std::vector<std::pair<uint16_t,vec2> > TextSpan::getGlyphMeasures() const
 			dst.second = src.second;
 		}
 #else	
-		mGlyphMeasures = shared_ptr<std::vector<std::pair<uint16_t,vec2> > >( 
-			new std::vector<std::pair<uint16_t,vec2> >( tbox.measureGlyphs() ) );
+		mGlyphMeasures = std::make_shared<std::vector<std::pair<Font::Glyph, vec2> >>(tbox.measureGlyphs());
 #endif		
 	}
 	

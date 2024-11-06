@@ -102,7 +102,7 @@ class FontObj : public std::enable_shared_from_this<FontObj> {
 	::LOGFONTW						mLogFont;
 	::HFONT							mHfont;
 	std::shared_ptr<Gdiplus::Font>	mGdiplusFont;
-	std::vector<std::pair<uint16_t,uint16_t> >	mUnicodeRanges;
+	std::vector<std::pair<uint32_t,uint32_t> >	mUnicodeRanges;
 	void *mFileData;
 #elif defined( CINDER_UWP )
 	std::vector<std::pair<uint16_t,uint16_t> >	mUnicodeRanges;
@@ -655,7 +655,7 @@ Font::Glyph Font::getGlyphIndex( size_t idx ) const
 {
 	size_t ct = 0;
 	bool found = false;
-	for( vector<pair<uint16_t,uint16_t> >::const_iterator rangeIt = mObj->mUnicodeRanges.begin(); rangeIt != mObj->mUnicodeRanges.end(); ++rangeIt ) {
+	for( vector<pair<uint32_t,uint32_t> >::const_iterator rangeIt = mObj->mUnicodeRanges.begin(); rangeIt != mObj->mUnicodeRanges.end(); ++rangeIt ) {
 		if( ct + rangeIt->second - rangeIt->first >= idx ) {
 			ct = rangeIt->first + ( idx - ct );
 			found = true;

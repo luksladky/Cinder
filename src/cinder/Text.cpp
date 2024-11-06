@@ -912,12 +912,12 @@ vector<string> TextBox::calculateLineBreaks() const
 	return result;
 }
 
-vector<pair<uint16_t,vec2> > TextBox::measureGlyphs() const
+vector<pair<Font::Glyph,vec2> > TextBox::measureGlyphs() const
 {
-	vector<pair<uint16_t,vec2> > result;
+	vector<pair<Font::Glyph,vec2> > result;
 
 	if( mText.empty() )
-		return result;
+		return { };
 
 	GCP_RESULTSW gcpResults;
 	WCHAR *glyphIndices = NULL;
@@ -956,7 +956,7 @@ vector<pair<uint16_t,vec2> > TextBox::measureGlyphs() const
 
 			if( ! ::GetCharacterPlacementW( Font::getGlobalDc(), (wchar_t*)&wideText[0], static_cast<int>( wideText.length() ), 0,
 							&gcpResults, GCP_DIACRITIC | GCP_LIGATE | GCP_GLYPHSHAPE | GCP_REORDER ) ) {
-				return vector<pair<uint16_t,vec2> >(); // failure
+				return {}; // failure
 			}
 
 			if( gcpResults.lpDx && gcpResults.lpGlyphs )
@@ -965,7 +965,7 @@ vector<pair<uint16_t,vec2> > TextBox::measureGlyphs() const
 			// Too small a buffer, try again
 			bufferSize += bufferSize / 2;
 			if( bufferSize > INT_MAX) {
-				return vector<pair<uint16_t,vec2> >(); // failure
+				return {}; // failure
 			}
 		}
 		

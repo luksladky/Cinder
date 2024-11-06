@@ -700,7 +700,7 @@ class CI_API TextSpan : public Node {
 	void									setString( const std::string &s ) { mString = s; }
 	const std::shared_ptr<Font>				getFont() const;
 	//! Returns a vector of glyph IDs and positions for the string, ignoring rotation. Cached and lazily calculated.
-	std::vector<std::pair<uint16_t,vec2>> 	getGlyphMeasures() const;
+	std::vector<std::pair<Font::Glyph,vec2>> 	getGlyphMeasures() const;
 	vec2									getTextPen() const;
 	void									setTextPen( const vec2 &textPen );
 	float									getRotation() const;
@@ -716,7 +716,7 @@ class CI_API TextSpan : public Node {
 	Attributes						mAttributes;
 	std::string						mString;
 	mutable std::shared_ptr<Font>	mFont;
-	mutable std::shared_ptr<std::vector<std::pair<uint16_t,vec2> > > mGlyphMeasures;
+	mutable std::shared_ptr<std::vector<std::pair<Font::Glyph,vec2> > > mGlyphMeasures;
 	mutable std::shared_ptr<Shape2d>	mShape;
 	
 	std::vector<TextSpanRef>		mSpans;

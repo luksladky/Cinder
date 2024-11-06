@@ -60,7 +60,7 @@ class CI_API Font {
 		ivec2				advance;
 	};
 #else
-	typedef uint16_t		Glyph;	
+	typedef uint32_t		Glyph;	
 	struct CI_API GlyphMetrics {};
 #endif
 
