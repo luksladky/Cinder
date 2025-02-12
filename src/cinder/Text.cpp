@@ -777,9 +777,9 @@ void TextBox::createLines() const
 	mInvalid = false;
 }
 
-vector<pair<uint16_t,vec2> > TextBox::measureGlyphs() const
+vector<pair<uint32_t,vec2> > TextBox::measureGlyphs() const
 {
-	vector<pair<uint16_t,vec2> > result;
+	vector<pair<uint32_t,vec2> > result;
 
 	createLines();
 	CFRange range = CFRangeMake( 0, 0 );

@@ -583,7 +583,7 @@ Shape2d Font::getGlyphShape( Glyph glyphIndex ) const
 
 Rectf Font::getGlyphBoundingBox( Glyph glyph ) const
 {
-	CGGlyph glyphs[1] = { glyph };
+	CGGlyph glyphs[1] = { static_cast<CGGlyph>(glyph) };
 	CGRect bounds = ::CTFontGetBoundingRectsForGlyphs( mObj->mCTFont, kCTFontDefaultOrientation, glyphs, NULL, 1 );
 	return Rectf( bounds.origin.x, bounds.origin.y, bounds.origin.x + bounds.size.width, bounds.origin.y + bounds.size.height );
 }
