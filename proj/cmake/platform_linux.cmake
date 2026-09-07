@@ -4,24 +4,86 @@ set( CMAKE_VERBOSE_MAKEFILE ON )
 
 set( CINDER_PLATFORM "Posix" )
 
+# GLFW 3.4. Both the X11 and Wayland backends are compiled in and GLFW picks one
+# at runtime; that is what lets a Wayland session report a real content scale.
 # When CINDER_HEADLESS is set, ${SRC_SET_GLFW} will *not* be compiled.
 list( APPEND SRC_SET_GLFW
+	# platform independent
 	${CINDER_SRC_DIR}/glfw/src/context.c
 	${CINDER_SRC_DIR}/glfw/src/init.c
 	${CINDER_SRC_DIR}/glfw/src/input.c
 	${CINDER_SRC_DIR}/glfw/src/monitor.c
+	${CINDER_SRC_DIR}/glfw/src/platform.c
+	${CINDER_SRC_DIR}/glfw/src/vulkan.c
 	${CINDER_SRC_DIR}/glfw/src/window.c
-	${CINDER_SRC_DIR}/glfw/src/glx_context.c
 	${CINDER_SRC_DIR}/glfw/src/egl_context.c
+	${CINDER_SRC_DIR}/glfw/src/osmesa_context.c
+	# null backend, required by GLFW even when it is never selected
+	${CINDER_SRC_DIR}/glfw/src/null_init.c
+	${CINDER_SRC_DIR}/glfw/src/null_monitor.c
+	${CINDER_SRC_DIR}/glfw/src/null_window.c
+	${CINDER_SRC_DIR}/glfw/src/null_joystick.c
+	# posix
+	${CINDER_SRC_DIR}/glfw/src/posix_module.c
+	${CINDER_SRC_DIR}/glfw/src/posix_time.c
+	${CINDER_SRC_DIR}/glfw/src/posix_thread.c
+	${CINDER_SRC_DIR}/glfw/src/posix_poll.c
+	${CINDER_SRC_DIR}/glfw/src/linux_joystick.c
+	# X11
 	${CINDER_SRC_DIR}/glfw/src/x11_init.c
 	${CINDER_SRC_DIR}/glfw/src/x11_monitor.c
 	${CINDER_SRC_DIR}/glfw/src/x11_window.c
+	${CINDER_SRC_DIR}/glfw/src/glx_context.c
 	${CINDER_SRC_DIR}/glfw/src/xkb_unicode.c
-	${CINDER_SRC_DIR}/glfw/src/linux_joystick.c
-	${CINDER_SRC_DIR}/glfw/src/posix_time.c
-	${CINDER_SRC_DIR}/glfw/src/posix_tls.c
-	${CINDER_SRC_DIR}/glfw/src/vulkan.c
+	# Wayland
+	${CINDER_SRC_DIR}/glfw/src/wl_init.c
+	${CINDER_SRC_DIR}/glfw/src/wl_monitor.c
+	${CINDER_SRC_DIR}/glfw/src/wl_window.c
 )
+
+# GLFW's Wayland backend is generated from the protocol XML bundled in
+# src/glfw/deps/wayland, so only wayland-scanner itself has to be installed.
+# This has to run before ${SRC_SET_GLFW} is folded into the library sources below.
+if( NOT CINDER_HEADLESS )
+	find_program( WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner )
+	if( NOT WAYLAND_SCANNER_EXECUTABLE )
+		message( FATAL_ERROR "wayland-scanner not found; install libwayland-bin" )
+	endif()
+
+	set( GLFW_WAYLAND_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/glfw-wayland-generated )
+	file( MAKE_DIRECTORY ${GLFW_WAYLAND_GEN_DIR} )
+
+	set( GLFW_WAYLAND_PROTOCOLS
+		wayland.xml
+		viewporter.xml
+		xdg-shell.xml
+		idle-inhibit-unstable-v1.xml
+		pointer-constraints-unstable-v1.xml
+		relative-pointer-unstable-v1.xml
+		fractional-scale-v1.xml
+		xdg-activation-v1.xml
+		xdg-decoration-unstable-v1.xml
+	)
+
+	foreach( protocol_file ${GLFW_WAYLAND_PROTOCOLS} )
+		set( protocol_path ${CINDER_SRC_DIR}/glfw/deps/wayland/${protocol_file} )
+		string( REGEX REPLACE "\\.xml$" "-client-protocol.h" header_file ${protocol_file} )
+		string( REGEX REPLACE "\\.xml$" "-client-protocol-code.h" code_file ${protocol_file} )
+
+		add_custom_command( OUTPUT ${GLFW_WAYLAND_GEN_DIR}/${header_file}
+			COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header ${protocol_path} ${GLFW_WAYLAND_GEN_DIR}/${header_file}
+			DEPENDS ${protocol_path}
+			VERBATIM )
+		add_custom_command( OUTPUT ${GLFW_WAYLAND_GEN_DIR}/${code_file}
+			COMMAND ${WAYLAND_SCANNER_EXECUTABLE} private-code ${protocol_path} ${GLFW_WAYLAND_GEN_DIR}/${code_file}
+			DEPENDS ${protocol_path}
+			VERBATIM )
+
+		list( APPEND SRC_SET_GLFW
+			${GLFW_WAYLAND_GEN_DIR}/${header_file}
+			${GLFW_WAYLAND_GEN_DIR}/${code_file} )
+	endforeach()
+endif()
 
 list( APPEND SRC_SET_CINDER_APP_LINUX
 	${CINDER_SRC_DIR}/cinder/app/linux/AppLinux.cpp
@@ -216,8 +278,36 @@ if( CINDER_HEADLESS )
 	elseif( CINDER_HEADLESS_GL_OSMESA )
 		list( APPEND CINDER_DEFINES "-DCINDER_HEADLESS -DCINDER_HEADLESS_GL_OSMESA" )
 	endif()
-else() # If not headless we need X.
-	list( APPEND GLFW_FLAGS "-D_GLFW_X11" )
+else() # If not headless we need X, and we also build the Wayland backend.
+	list( APPEND GLFW_FLAGS "-D_GLFW_X11" "-D_GLFW_WAYLAND" )
+
+	# GLFW 3.4's Wayland backend is generated from the protocol XML bundled in
+	# src/glfw/deps/wayland, so only wayland-scanner itself has to be present.
+	find_program( WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner )
+	if( NOT WAYLAND_SCANNER_EXECUTABLE )
+		message( FATAL_ERROR "wayland-scanner not found; install libwayland-bin" )
+	endif()
+
+	# The protocol sources themselves are generated earlier in this file, before
+	# ${SRC_SET_GLFW} is folded into the library's source list.
+
+	# wl_init.c includes the generated headers by bare name
+	list( APPEND CINDER_INCLUDE_USER_PRIVATE ${GLFW_WAYLAND_GEN_DIR} )
+
+	# Wayland client libraries and xkbcommon, required by GLFW's Wayland backend
+	find_package( PkgConfig REQUIRED )
+	pkg_check_modules( GLFW_WAYLAND_DEPS REQUIRED
+		wayland-client wayland-cursor wayland-egl xkbcommon )
+	# _LINK_LIBRARIES gives absolute paths; the bare names in _LIBRARIES would not
+	# resolve for anything linking against Cinder's exported target.
+	list( APPEND CINDER_LIBS_DEPENDS ${GLFW_WAYLAND_DEPS_LINK_LIBRARIES} )
+	list( APPEND CINDER_INCLUDE_SYSTEM_PRIVATE ${GLFW_WAYLAND_DEPS_INCLUDE_DIRS} )
+
+	include( CheckSymbolExists )
+	check_symbol_exists( memfd_create "sys/mman.h" HAVE_MEMFD_CREATE )
+	if( HAVE_MEMFD_CREATE )
+		list( APPEND GLFW_FLAGS "-DHAVE_MEMFD_CREATE" )
+	endif()
 endif()
 
 list( APPEND CINDER_DEFINES "-D_UNIX" ${GLFW_FLAGS}  )

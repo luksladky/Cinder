@@ -70,6 +70,12 @@ ivec2 WindowImplLinux::getPos() const
 	return ivec2( 0, 0 );
 }
 
+float WindowImplLinux::getContentScale() const
+{
+	// No display server to ask when running headless.
+	return 1.0f;
+}
+
 void WindowImplLinux::setPos( const ivec2 &pos )
 {
 	/*Not implemented*/
