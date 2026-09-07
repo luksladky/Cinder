@@ -28,6 +28,7 @@
 
 #include <memory>
 #include <algorithm>
+#include <cstdint>
 
 namespace cinder { namespace audio { namespace dsp {
 
