@@ -99,6 +99,25 @@ WindowImplLinux::WindowImplLinux( const Window::Format &format, WindowImplLinux 
 		mGlfwWindow = ::glfwCreateWindow( windowSize.x, windowSize.y, format.getTitle().c_str(), nullptr, sharedGlfwWindow );
 	}
 
+	{
+		int windowWidth = 0, windowHeight = 0, framebufferWidth = 0, framebufferHeight = 0;
+		::glfwGetWindowSize( mGlfwWindow, &windowWidth, &windowHeight );
+		::glfwGetFramebufferSize( mGlfwWindow, &framebufferWidth, &framebufferHeight );
+
+		const char *platformName = "unknown";
+		switch( ::glfwGetPlatform() ) {
+			case GLFW_PLATFORM_WAYLAND: platformName = "Wayland"; break;
+			case GLFW_PLATFORM_X11:     platformName = "X11";     break;
+			case GLFW_PLATFORM_NULL:    platformName = "null";    break;
+			default: break;
+		}
+
+		CI_LOG_I( "GLFW platform: " << platformName
+			<< ", window " << windowWidth << "x" << windowHeight
+			<< ", framebuffer " << framebufferWidth << "x" << framebufferHeight
+			<< ", content scale " << getContentScale() );
+	}
+
 	mRenderer->setup( mGlfwWindow, sharedRendererWindow ? sharedRendererWindow->getRenderer() : nullptr );
 
 	// set WindowRef and its impl pointer to this
@@ -157,8 +176,30 @@ ivec2 WindowImplLinux::getPos() const
 }
 
 void WindowImplLinux::setPos( const ivec2 &pos )
-{	
+{
 	::glfwSetWindowPos( mGlfwWindow, pos.x, pos.y );
+}
+
+float WindowImplLinux::getContentScale() const
+{
+	if( ! mGlfwWindow )
+		return 1.0f;
+
+	// Report the ratio the renderer actually sees: framebuffer pixels per logical
+	// window unit. Under Wayland the compositor gives a window a larger buffer on
+	// a scaled output, so this is 2 on a 2x display while getSize() stays logical.
+	// Under X11 a window's size *is* its pixel size, so this is 1 no matter what
+	// Xft.dpi claims - which is the truth for layout purposes, and is why
+	// glfwGetWindowContentScale() is deliberately not used here.
+	int windowWidth = 0, windowHeight = 0;
+	int framebufferWidth = 0, framebufferHeight = 0;
+	::glfwGetWindowSize( mGlfwWindow, &windowWidth, &windowHeight );
+	::glfwGetFramebufferSize( mGlfwWindow, &framebufferWidth, &framebufferHeight );
+
+	if( windowWidth <= 0 || framebufferWidth <= 0 )
+		return 1.0f;
+
+	return static_cast<float>( framebufferWidth ) / static_cast<float>( windowWidth );
 }
 
 void WindowImplLinux::close()

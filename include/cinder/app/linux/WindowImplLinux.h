@@ -59,6 +59,8 @@ public:
 	virtual bool		isHidden() const { return false; }
 	virtual DisplayRef	getDisplay() const { return mDisplay; }
 	virtual RendererRef	getRenderer() const { return mRenderer; }
+	//! Ratio of framebuffer pixels to logical window units for this window
+	virtual float		getContentScale() const;
 	virtual const std::vector<TouchEvent::Touch>&	getActiveTouches() const;
 
 #if defined( CINDER_HEADLESS )

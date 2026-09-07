@@ -520,6 +520,24 @@ DisplayRef PlatformLinux::findDisplayFromGlfwMonitor( GLFWmonitor *monitor )
 }
 
 #if ! defined( CINDER_LINUX_EGL_ONLY ) && ! defined( CINDER_HEADLESS )
+namespace {
+
+//! Monitor scale factor as reported by the display server, defaulting to 1.
+// Wayland supplies the compositor's surface scale here. X11 derives it from
+// Xft.dpi, which many setups leave at 96dpi, so 1 is a normal answer there.
+float getMonitorContentScale( GLFWmonitor *monitor )
+{
+	if( ! monitor )
+		return 1.0f;
+
+	float xscale = 1.0f, yscale = 1.0f;
+	::glfwGetMonitorContentScale( monitor, &xscale, &yscale );
+
+	return ( xscale > 0.0f ) ? xscale : 1.0f;
+}
+
+} // anonymous namespace
+
 void DisplayLinux::displayReconfiguredCallback( GLFWmonitor* monitor, int event )
 {
 	auto platform = app::PlatformLinux::get();
@@ -545,9 +563,7 @@ void DisplayLinux::displayReconfiguredCallback( GLFWmonitor* monitor, int event 
 
 			newDisplay->mBitsPerPixel = videoMode->redBits + videoMode->greenBits + videoMode->blueBits;
 
-			// TODO: figure out content scaling.
-			//const double dpi = mode->width / (widthMM / 25.4);
-			newDisplay->mContentScale = 1.0;
+			newDisplay->mContentScale = getMonitorContentScale( monitor );
 			platform->addDisplay( DisplayRef( newDisplay ) ); // this will signal
 		}
 		else
@@ -578,9 +594,7 @@ const std::vector<DisplayRef>& app::PlatformLinux::getDisplays()
 			newDisplay->mArea = Area( pos.x, pos.y, pos.x + size.x, pos.y + size.y );
 			newDisplay->mBitsPerPixel = videoMode->redBits + videoMode->greenBits + videoMode->blueBits;
 
-			// TODO: figure out content scaling.
-			//const double dpi = mode->width / (widthMM / 25.4);
-			newDisplay->mContentScale = 1.0f;
+			newDisplay->mContentScale = getMonitorContentScale( monitor );
 			newDisplay->mMonitor = monitor;
 			if( mainScreen == monitor )
 				mDisplays[0] = std::move( newDisplay );
