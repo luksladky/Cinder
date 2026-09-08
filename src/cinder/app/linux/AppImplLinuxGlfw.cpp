@@ -43,6 +43,8 @@ public:
 		sWindowMapping[glfwWindow] = std::make_pair( cinderAppImpl, cinderWindow );
 
 		::glfwSetWindowSizeCallback( glfwWindow, GlfwCallbacks::onWindowSize );
+		::glfwSetFramebufferSizeCallback( glfwWindow, GlfwCallbacks::onFramebufferSize );
+		::glfwSetWindowContentScaleCallback( glfwWindow, GlfwCallbacks::onWindowContentScale );
 		::glfwSetKeyCallback( glfwWindow, GlfwCallbacks::onKeyboard );
 		::glfwSetCharCallback( glfwWindow, GlfwCallbacks::onCharInput );
 		::glfwSetCursorPosCallback( glfwWindow, GlfwCallbacks::onMousePos );
@@ -67,6 +69,36 @@ public:
 			cinderAppImpl->setWindow( cinderWindow );
 
 			cinderWindow->emitResize();
+		}
+	}
+
+	//! The framebuffer can change size without the logical window size changing, and
+	// vice versa. Under Wayland a resize is a compositor round-trip, so onWindowSize
+	// fires while the framebuffer is still the old size; the renderer's viewport is
+	// set from glfwGetFramebufferSize and would keep that stale value forever. Emit
+	// again once the framebuffer itself has changed.
+	static void onFramebufferSize( GLFWwindow* glfwWindow, int width, int height ) {
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
+
+			cinderWindow->emitResize();
+		}
+	}
+
+	//! Moving to an output with a different scale changes the content scale without
+	// necessarily changing the logical window size. Anything cached off the old scale
+	// (font atlases, FBO densities) has to be rebuilt, which is what displayChange means.
+	static void onWindowContentScale( GLFWwindow* glfwWindow, float xscale, float yscale ) {
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
+
+			cinderWindow->emitDisplayChange();
 		}
 	}
 
