@@ -281,30 +281,29 @@ if( CINDER_HEADLESS )
 else() # If not headless we need X, and we also build the Wayland backend.
 	list( APPEND GLFW_FLAGS "-D_GLFW_X11" "-D_GLFW_WAYLAND" )
 
-	# GLFW 3.4's Wayland backend is generated from the protocol XML bundled in
-	# src/glfw/deps/wayland, so only wayland-scanner itself has to be present.
-	find_program( WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner )
-	if( NOT WAYLAND_SCANNER_EXECUTABLE )
-		message( FATAL_ERROR "wayland-scanner not found; install libwayland-bin" )
-	endif()
-
-	# The protocol sources themselves are generated earlier in this file, before
-	# ${SRC_SET_GLFW} is folded into the library's source list.
+	# The protocol sources are generated near the top of this file, before
+	# ${SRC_SET_GLFW} is folded into the library's source list, along with the
+	# wayland-scanner lookup that produces them.
 
 	# wl_init.c includes the generated headers by bare name
 	list( APPEND CINDER_INCLUDE_USER_PRIVATE ${GLFW_WAYLAND_GEN_DIR} )
 
-	# Wayland client libraries and xkbcommon, required by GLFW's Wayland backend
+	# Headers only. GLFW 3.4 dlopen()s libwayland-client/cursor/egl and
+	# libxkbcommon at runtime and routes every call through function pointers
+	# (see wl_init.c), which is exactly what lets one binary pick X11 or Wayland
+	# at startup. Linking them would put a DT_NEEDED on all four in every app
+	# built against Cinder, so an X11-only machine would fail to start something
+	# it never needed. Upstream GLFW takes the include directories the same way.
 	find_package( PkgConfig REQUIRED )
 	pkg_check_modules( GLFW_WAYLAND_DEPS REQUIRED
 		wayland-client wayland-cursor wayland-egl xkbcommon )
-	# _LINK_LIBRARIES gives absolute paths; the bare names in _LIBRARIES would not
-	# resolve for anything linking against Cinder's exported target.
-	list( APPEND CINDER_LIBS_DEPENDS ${GLFW_WAYLAND_DEPS_LINK_LIBRARIES} )
 	list( APPEND CINDER_INCLUDE_SYSTEM_PRIVATE ${GLFW_WAYLAND_DEPS_INCLUDE_DIRS} )
 
-	include( CheckSymbolExists )
-	check_symbol_exists( memfd_create "sys/mman.h" HAVE_MEMFD_CREATE )
+	# glibc only declares memfd_create under _GNU_SOURCE, so check_symbol_exists
+	# never finds it; check for the symbol in the library instead, as GLFW does.
+	# Without this GLFW silently falls back to a temp file in XDG_RUNTIME_DIR.
+	include( CheckFunctionExists )
+	check_function_exists( memfd_create HAVE_MEMFD_CREATE )
 	if( HAVE_MEMFD_CREATE )
 		list( APPEND GLFW_FLAGS "-DHAVE_MEMFD_CREATE" )
 	endif()
