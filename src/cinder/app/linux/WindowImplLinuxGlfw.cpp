@@ -168,8 +168,23 @@ void WindowImplLinux::setSize( const ivec2 &size )
 	::glfwSetWindowSize( mGlfwWindow, size.x, size.y );
 }
 
+namespace {
+
+//! Wayland has no concept of a client knowing or choosing its own position, so
+// GLFW reports GLFW_FEATURE_UNAVAILABLE for both queries. Asking anyway is
+// harmless but logs an error every time, and getMousePos() asks once per frame.
+bool platformSupportsWindowPosition()
+{
+	return ::glfwGetPlatform() != GLFW_PLATFORM_WAYLAND;
+}
+
+} // anonymous namespace
+
 ivec2 WindowImplLinux::getPos() const
 {
+	if( ! platformSupportsWindowPosition() )
+		return ivec2( 0 );
+
 	int xpos, ypos;
 	::glfwGetWindowPos( mGlfwWindow, &xpos, &ypos );
 	return ivec2( xpos, ypos );
@@ -177,6 +192,9 @@ ivec2 WindowImplLinux::getPos() const
 
 void WindowImplLinux::setPos( const ivec2 &pos )
 {
+	if( ! platformSupportsWindowPosition() )
+		return;
+
 	::glfwSetWindowPos( mGlfwWindow, pos.x, pos.y );
 }
 
