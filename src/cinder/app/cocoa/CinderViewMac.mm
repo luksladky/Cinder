@@ -416,16 +416,66 @@ using namespace cinder::app;
 	[mDelegate mouseDrag:&mouseEvent];
 }
 
+//! Maps an NSEvent's scroll/gesture phase onto MouseEvent::GesturePhase. Momentum wins over phase, so
+//! that consumers can tell inertial scrolling apart from fingers-on-glass.
++ (cinder::app::MouseEvent::GesturePhase)gesturePhaseForEvent:(NSEvent*)theEvent
+{
+	using GesturePhase = cinder::app::MouseEvent::GesturePhase;
+
+	if( [theEvent momentumPhase] & ( NSEventPhaseBegan | NSEventPhaseChanged | NSEventPhaseStationary ) )
+		return GesturePhase::MOMENTUM;
+
+	NSEventPhase phase = [theEvent phase];
+	if( phase & NSEventPhaseBegan )
+		return GesturePhase::BEGAN;
+	else if( phase & NSEventPhaseChanged )
+		return GesturePhase::CHANGED;
+	else if( phase & ( NSEventPhaseEnded | NSEventPhaseCancelled ) )
+		return GesturePhase::ENDED;
+
+	return GesturePhase::NONE;
+}
+
 - (void)scrollWheel:(NSEvent*)theEvent
 {
-	float wheelDelta		= [theEvent deltaX] + [theEvent deltaY];
 	NSPoint curPoint		= [theEvent locationInWindow];
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, wheelDelta / 4.0f, (uint32_t)[theEvent modifierFlags] );
+
+	// A precise device reports pixel deltas; a detented wheel reports lines. Normalize both to
+	// "detent-equivalent" units so a naive consumer stays in a sane range on either device.
+	const BOOL precise = [theEvent hasPreciseScrollingDeltas];
+	const float scale = precise ? cinder::app::MouseEvent::PRECISE_PIXELS_PER_DETENT : 4.0f;
+	const float dx = (float)[theEvent scrollingDeltaX] / scale;
+	const float dy = (float)[theEvent scrollingDeltaY] / scale;
+
+	// Deltas are already adjusted for the user's "natural scrolling" preference; we pass the flag through
+	// rather than un-inverting here, so the app decides whether it wants content-space or raw-wheel semantics.
+	const bool inverted = [theEvent isDirectionInvertedFromDevice] ? true : false;
+
+	// Legacy combined scalar, preserved bit-for-bit for a detented wheel so existing handlers are unaffected.
+	const float legacy = dx + dy;
+
+	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, legacy, (uint32_t)[theEvent modifierFlags],
+			cinder::vec2( dx, dy ), precise ? true : false, [CinderViewMac gesturePhaseForEvent:theEvent], 0.0f, inverted );
 	[mDelegate mouseWheel:&mouseEvent];
+}
+
+- (void)magnifyWithEvent:(NSEvent*)theEvent
+{
+	if( ! [mDelegate respondsToSelector:@selector(mouseMagnify:)] )
+		return;
+
+	NSPoint curPoint		= [theEvent locationInWindow];
+	int x					= (curPoint.x - [self frame].origin.x);
+	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
+	int mods				= [self prepMouseEventModifiers:theEvent];
+
+	// [theEvent magnification] is the *relative* change for this event, e.g. 0.05 => grow by 5%.
+	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags],
+			cinder::vec2( 0 ), true, [CinderViewMac gesturePhaseForEvent:theEvent], (float)[theEvent magnification], false );
+	[mDelegate mouseMagnify:&mouseEvent];
 }
 
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender

@@ -33,10 +33,27 @@ namespace cinder { namespace app {
 //! Represents a mouse event
 class CI_API MouseEvent : public Event {
   public:
-	MouseEvent() : Event() {}
-	MouseEvent( const WindowRef &win, int initiator, int x, int y, unsigned int modifiers, float wheelIncrement, uint32_t nativeModifiers )
-		: Event( win ), mInitiator( initiator ), mPos( x, y ), mModifiers( modifiers ), mWheelIncrement( wheelIncrement ), mNativeModifiers( nativeModifiers )
+	//! Phase of a continuous (trackpad) scroll or magnify gesture. Detented mouse wheels always report NONE.
+	enum class GesturePhase { NONE, BEGAN, CHANGED, ENDED, MOMENTUM };
+
+	//! Pixels of precise (trackpad) scrolling treated as equivalent to one wheel detent. Multiply
+	//! getWheelDelta() by this to recover pixel-domain deltas for 1:1 scrolling.
+	static constexpr float PRECISE_PIXELS_PER_DETENT = 40.0f;
+
+	MouseEvent() : Event(), mInitiator( 0 ), mPos( 0 ), mModifiers( 0 ), mWheelIncrement( 0 ), mNativeModifiers( 0 ),
+		mWheelDelta( 0 ), mMagnification( 0 ), mPhase( GesturePhase::NONE ), mIsPrecise( false ), mDirectionInverted( false )
 	{}
+	MouseEvent( const WindowRef &win, int initiator, int x, int y, unsigned int modifiers, float wheelIncrement, uint32_t nativeModifiers,
+				const vec2 &wheelDelta = vec2( 0 ), bool isPrecise = false, GesturePhase phase = GesturePhase::NONE,
+				float magnification = 0.0f, bool directionInverted = false )
+		: Event( win ), mInitiator( initiator ), mPos( x, y ), mModifiers( modifiers ), mWheelIncrement( wheelIncrement ), mNativeModifiers( nativeModifiers ),
+			mWheelDelta( wheelDelta ), mMagnification( magnification ), mPhase( phase ), mIsPrecise( isPrecise ), mDirectionInverted( directionInverted )
+	{
+		// Emitters that only supply the legacy scalar (Windows WM_MOUSEWHEEL, Linux) get a sane vertical axis for free,
+		// so per-axis consumers work everywhere without every backend being updated.
+		if( mWheelDelta == vec2( 0 ) && mWheelIncrement != 0.0f )
+			mWheelDelta = vec2( 0, mWheelIncrement );
+	}
 
 	//! Returns the X coordinate of the mouse event, measured in points
 	int			getX() const				{ return mPos.x; }
@@ -69,7 +86,22 @@ class CI_API MouseEvent : public Event {
 	//! Returns whether the accelerator key was pressed during the event. Maps to the Control key on Windows and the Command key on Mac OS X.
 	bool		isAccelDown() const			{ return (mModifiers & ACCEL_DOWN) ? true : false; }
 	//! Returns the number of detents the user has wheeled through. Positive values correspond to wheel-up and negative to wheel-down.
+	//! This is the legacy combined scalar (X+Y); prefer getWheelDelta() to distinguish axes.
 	float		getWheelIncrement() const	{ return mWheelIncrement; }
+	//! Returns per-axis scroll delta in detent-equivalent units. +Y is wheel-up, +X is wheel-right.
+	const vec2&	getWheelDelta() const		{ return mWheelDelta; }
+	//! Returns whether the event came from a precise device (trackpad / Magic Mouse) rather than a detented wheel.
+	//! Precise events arrive at a much higher rate with fractional deltas, so consumers must scale accordingly.
+	bool		isPreciseScrolling() const	{ return mIsPrecise; }
+	//! Returns the relative magnification for a magnify (pinch) event; 0.05 means "grow by 5%". Only meaningful on mouseMagnify().
+	float		getMagnification() const	{ return mMagnification; }
+	//! Returns the phase of a continuous gesture. Detented wheels always report GesturePhase::NONE.
+	GesturePhase getGesturePhase() const	{ return mPhase; }
+	//! Returns whether this event is inertial scrolling generated after the fingers lifted.
+	bool		isMomentum() const			{ return mPhase == GesturePhase::MOMENTUM; }
+	//! Returns whether the OS reports the device direction as inverted ("natural" scrolling). Deltas are already
+	//! system-adjusted; this is exposed so apps that want raw wheel semantics can undo it.
+	bool		isDirectionInverted() const	{ return mDirectionInverted; }
 	
 	//! Returns the platform-native modifier mask
 	uint32_t	getNativeModifiers() const	{ return mNativeModifiers; }
@@ -95,6 +127,11 @@ class CI_API MouseEvent : public Event {
 	unsigned int	mModifiers;
 	float			mWheelIncrement;
 	uint32_t		mNativeModifiers;
+	vec2			mWheelDelta;
+	float			mMagnification;
+	GesturePhase	mPhase;
+	bool			mIsPrecise;
+	bool			mDirectionInverted;
 };
 
 } } // namespace cinder::app

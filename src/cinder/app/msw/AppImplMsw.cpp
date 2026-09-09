@@ -913,8 +913,25 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 		case WM_MOUSEWHEEL: {
 			POINT pt = { ((int)(short)LOWORD(lParam)), ((int)(short)HIWORD(lParam)) };
 			::MapWindowPoints( NULL, mWnd, &pt, 1 );
+			const float delta = GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f;
+			// Precision touchpads send deltas finer than one detent (|delta| < 1); a real wheel never does.
+			const bool precise = ( delta != 0.0f ) && ( fabsf( delta ) < 1.0f );
 			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), prepMouseEventModifiers( wParam ),
-								GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f, static_cast<unsigned int>( wParam ) );
+								delta, static_cast<unsigned int>( wParam ),
+								vec2( 0, delta ), precise, MouseEvent::GesturePhase::NONE, 0.0f, false );
+			impl->getWindow()->emitMouseWheel( &event );
+		}
+		break;
+		case WM_MOUSEHWHEEL: {
+			POINT pt = { ((int)(short)LOWORD(lParam)), ((int)(short)HIWORD(lParam)) };
+			::MapWindowPoints( NULL, mWnd, &pt, 1 );
+			// Positive is scroll-right on Windows; negate so +X matches the macOS/`getWheelDelta()` convention.
+			const float delta = -( GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f );
+			const bool precise = ( delta != 0.0f ) && ( fabsf( delta ) < 1.0f );
+			// Legacy scalar stays 0: existing single-axis handlers must not react to horizontal scroll.
+			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), prepMouseEventModifiers( wParam ),
+								0.0f, static_cast<unsigned int>( wParam ),
+								vec2( delta, 0 ), precise, MouseEvent::GesturePhase::NONE, 0.0f, false );
 			impl->getWindow()->emitMouseWheel( &event );
 		}
 		break;
