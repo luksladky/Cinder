@@ -58,6 +58,11 @@ typedef TOUCHINPUT const * PCTOUCHINPUT;
 #define WM_TOUCH                        0x0240
 #endif
 
+// Horizontal wheel; present since Vista but absent from some older SDK headers.
+#if ! defined( WM_MOUSEHWHEEL )
+#define WM_MOUSEHWHEEL                  0x020E
+#endif
+
 namespace cinder { namespace app {
 
 class AppImplMsw {
