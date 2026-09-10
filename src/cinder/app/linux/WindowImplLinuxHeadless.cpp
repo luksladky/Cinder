@@ -72,7 +72,6 @@ ivec2 WindowImplLinux::getPos() const
 
 float WindowImplLinux::getContentScale() const
 {
-	// No display server to ask when running headless.
 	return 1.0f;
 }
 

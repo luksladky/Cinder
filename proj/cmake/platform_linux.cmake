@@ -281,10 +281,6 @@ if( CINDER_HEADLESS )
 else() # If not headless we need X, and we also build the Wayland backend.
 	list( APPEND GLFW_FLAGS "-D_GLFW_X11" "-D_GLFW_WAYLAND" )
 
-	# The protocol sources are generated near the top of this file, before
-	# ${SRC_SET_GLFW} is folded into the library's source list, along with the
-	# wayland-scanner lookup that produces them.
-
 	# wl_init.c includes the generated headers by bare name
 	list( APPEND CINDER_INCLUDE_USER_PRIVATE ${GLFW_WAYLAND_GEN_DIR} )
 

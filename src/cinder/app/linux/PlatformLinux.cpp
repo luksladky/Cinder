@@ -524,17 +524,11 @@ namespace {
 
 //! Monitor scale factor as reported by the display server, defaulting to 1.
 //
-// This deliberately does NOT agree with Window::getContentScale(), and the
-// difference is real rather than a bug in either. Under Wayland this is the
-// integer wl_output.scale the compositor advertises for the monitor, while a
-// window gets a fractional surface scale via fractional-scale-v1: a session at
-// 125% reports 2 here and 1.25 for the window. Under X11 this is Xft.dpi/96
-// while a window is always 1, because an X11 window's size is its pixel size.
-//
-// For anything to do with layout or rendering, use Window::getContentScale():
-// it is the ratio between the framebuffer and the logical window, which is what
-// Cinder's viewport and toPixels() are defined against. Use this one only when
-// you genuinely mean a property of the monitor.
+// This deliberately does not agree with Window::getContentScale(): under
+// Wayland it is the integer wl_output.scale, while a window gets a fractional
+// surface scale, so a 125% session reports 2 here and 1.25 for the window.
+// Layout and rendering want the window value; use this one only when you mean
+// a property of the monitor.
 float getMonitorContentScale( GLFWmonitor *monitor )
 {
 	if( ! monitor )

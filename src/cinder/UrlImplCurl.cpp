@@ -86,12 +86,10 @@ IStreamUrlImplCurl::IStreamUrlImplCurl( const std::string &url, const std::strin
 	curl_easy_setopt( mCurl, CURLOPT_FOLLOWLOCATION, 1L );
 	curl_easy_setopt( mCurl, CURLOPT_WRITEFUNCTION, IStreamUrlImplCurl::writeCallback );
 
-	// libcurl sends no User-Agent unless asked to. The "curl/x.y" header people
-	// expect comes from the curl command line tool, not from the library. Many
-	// servers and most WAFs reject a request carrying no User-Agent at all,
-	// usually with a 401 or 403 whose body is HTML, so the caller sees a JSON
-	// parse failure rather than anything pointing at the real cause. The Cocoa
-	// and WinInet backends always send one, which is why this only bit Linux.
+	// libcurl sends no User-Agent unless asked to - the "curl/x.y" header comes
+	// from the command line tool, not the library. Servers and WAFs reject that
+	// with a 401 or 403 whose body is HTML, which surfaces as a JSON parse error
+	// far from the cause. Cocoa and WinInet always send one.
 	curl_easy_setopt( mCurl, CURLOPT_USERAGENT, "Cinder/" CINDER_VERSION_STR );
 
 	if( ( ! mUser.empty() ) || ( ! mPassword.empty() ) ) {
