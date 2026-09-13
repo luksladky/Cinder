@@ -464,7 +464,7 @@ using namespace cinder::app;
 
 - (void)magnifyWithEvent:(NSEvent*)theEvent
 {
-	if( ! [mDelegate respondsToSelector:@selector(mouseMagnify:)] )
+	if( ! [mDelegate respondsToSelector:@selector(gesture:)] )
 		return;
 
 	NSPoint curPoint		= [theEvent locationInWindow];
@@ -474,8 +474,9 @@ using namespace cinder::app;
 
 	// [theEvent magnification] is the *relative* change for this event, e.g. 0.05 => grow by 5%.
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags],
-			cinder::vec2( 0 ), true, [CinderViewMac gesturePhaseForEvent:theEvent], (float)[theEvent magnification], false );
-	[mDelegate mouseMagnify:&mouseEvent];
+			cinder::vec2( 0 ), true, [CinderViewMac gesturePhaseForEvent:theEvent], (float)[theEvent magnification], false,
+			cinder::app::MouseEvent::GestureType::MAGNIFY );
+	[mDelegate gesture:&mouseEvent];
 }
 
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender
