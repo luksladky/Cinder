@@ -36,18 +36,25 @@ class CI_API MouseEvent : public Event {
 	//! Phase of a continuous (trackpad) scroll or magnify gesture. Detented mouse wheels always report NONE.
 	enum class GesturePhase { NONE, BEGAN, CHANGED, ENDED, MOMENTUM };
 
+	//! Which gesture an AppBase::gesture() event represents. Scroll is deliberately absent: a mouse can
+	//! scroll, so scrolling stays on the mouseWheel channel (carrying the same phase/precise/per-axis
+	//! metadata). Only gestures a mouse cannot produce are delivered via gesture().
+	enum class GestureType { NONE, MAGNIFY, ROTATE, SMART_MAGNIFY, SWIPE };
+
 	//! Pixels of precise (trackpad) scrolling treated as equivalent to one wheel detent. Multiply
 	//! getWheelDelta() by this to recover pixel-domain deltas for 1:1 scrolling.
 	static constexpr float PRECISE_PIXELS_PER_DETENT = 40.0f;
 
 	MouseEvent() : Event(), mInitiator( 0 ), mPos( 0 ), mModifiers( 0 ), mWheelIncrement( 0 ), mNativeModifiers( 0 ),
-		mWheelDelta( 0 ), mMagnification( 0 ), mPhase( GesturePhase::NONE ), mIsPrecise( false ), mDirectionInverted( false )
+		mWheelDelta( 0 ), mMagnification( 0 ), mPhase( GesturePhase::NONE ), mGestureType( GestureType::NONE ),
+		mIsPrecise( false ), mDirectionInverted( false )
 	{}
 	MouseEvent( const WindowRef &win, int initiator, int x, int y, unsigned int modifiers, float wheelIncrement, uint32_t nativeModifiers,
 				const vec2 &wheelDelta = vec2( 0 ), bool isPrecise = false, GesturePhase phase = GesturePhase::NONE,
-				float magnification = 0.0f, bool directionInverted = false )
+				float magnification = 0.0f, bool directionInverted = false, GestureType gestureType = GestureType::NONE )
 		: Event( win ), mInitiator( initiator ), mPos( x, y ), mModifiers( modifiers ), mWheelIncrement( wheelIncrement ), mNativeModifiers( nativeModifiers ),
-			mWheelDelta( wheelDelta ), mMagnification( magnification ), mPhase( phase ), mIsPrecise( isPrecise ), mDirectionInverted( directionInverted )
+			mWheelDelta( wheelDelta ), mMagnification( magnification ), mPhase( phase ), mGestureType( gestureType ),
+			mIsPrecise( isPrecise ), mDirectionInverted( directionInverted )
 	{
 		// Emitters that only supply the legacy scalar (Windows WM_MOUSEWHEEL, Linux) get a sane vertical axis for free,
 		// so per-axis consumers work everywhere without every backend being updated.
@@ -93,7 +100,9 @@ class CI_API MouseEvent : public Event {
 	//! Returns whether the event came from a precise device (trackpad / Magic Mouse) rather than a detented wheel.
 	//! Precise events arrive at a much higher rate with fractional deltas, so consumers must scale accordingly.
 	bool		isPreciseScrolling() const	{ return mIsPrecise; }
-	//! Returns the relative magnification for a magnify (pinch) event; 0.05 means "grow by 5%". Only meaningful on mouseMagnify().
+	//! Returns which gesture a gesture() event represents; handlers must switch on this.
+	GestureType	getGestureType() const		{ return mGestureType; }
+	//! Returns the relative magnification for a MAGNIFY gesture; 0.05 means "grow by 5%".
 	float		getMagnification() const	{ return mMagnification; }
 	//! Returns the phase of a continuous gesture. Detented wheels always report GesturePhase::NONE.
 	GesturePhase getGesturePhase() const	{ return mPhase; }
@@ -130,6 +139,7 @@ class CI_API MouseEvent : public Event {
 	vec2			mWheelDelta;
 	float			mMagnification;
 	GesturePhase	mPhase;
+	GestureType		mGestureType;
 	bool			mIsPrecise;
 	bool			mDirectionInverted;
 };

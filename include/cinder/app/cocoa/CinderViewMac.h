@@ -50,8 +50,8 @@
 - (void)fileDrop:(cinder::app::FileDropEvent*)event;
 - (cinder::app::WindowRef)getWindowRef;
 @optional
-//! Pinch-to-zoom. Optional so existing delegates (AppCocoaView, screen saver) need no change.
-- (void)mouseMagnify:(cinder::app::MouseEvent*)event;
+//! Trackpad gestures. Optional so existing delegates (AppCocoaView, screen saver) need no change.
+- (void)gesture:(cinder::app::MouseEvent*)event;
 @end
 
 @interface CinderViewMac : NSView {

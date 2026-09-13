@@ -355,14 +355,14 @@ void Window::emitMouseWheel( MouseEvent *event )
 		getApp()->mouseWheel( *event );
 }
 
-void Window::emitMouseMagnify( MouseEvent *event )
+void Window::emitGesture( MouseEvent *event )
 {
 	applyCurrentContext();
 
 	CollectorEvent<MouseEvent> collector( event );
-	mSignalMouseMagnify.emit( collector, *event );
+	mSignalGesture.emit( collector, *event );
 	if( ! event->isHandled() )
-		getApp()->mouseMagnify( *event );
+		getApp()->gesture( *event );
 }
 
 void Window::emitMouseMove( MouseEvent *event )
