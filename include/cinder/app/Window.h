@@ -379,11 +379,10 @@ class CI_API Window : public std::enable_shared_from_this<Window> {
 	EventSignalMouse&	getSignalMouseWheel() { return mSignalMouseWheel; }
 	void				emitMouseWheel( MouseEvent *event );
 
-	//! Trackpad gestures a mouse cannot produce (pinch, rotate, ...). Deliberately a separate channel
-	//! from mouseWheel so existing wheel handlers never see them; MouseEvent is reused only as the
-	//! payload (position + modifiers). Check MouseEvent::getGestureType() to discriminate.
-	EventSignalMouse&	getSignalGesture() { return mSignalGesture; }
-	void				emitGesture( MouseEvent *event );
+	//! Pinch-to-zoom. Deliberately a separate channel from mouseWheel so existing wheel handlers never
+	//! see it; MouseEvent is reused only as the payload (position + modifiers).
+	EventSignalMouse&	getSignalGestureMagnify() { return mSignalGestureMagnify; }
+	void				emitGestureMagnify( MouseEvent *event );
 
 	EventSignalTouch&	getSignalTouchesBegan() { return mSignalTouchesBegan; }
 	void				emitTouchesBegan( TouchEvent *event );
@@ -495,7 +494,7 @@ class CI_API Window : public std::enable_shared_from_this<Window> {
 	bool						mValid;
 	std::shared_ptr<void>		mUserData;
 	
-	EventSignalMouse		mSignalMouseDown, mSignalMouseDrag, mSignalMouseUp, mSignalMouseWheel, mSignalMouseMove, mSignalGesture;
+	EventSignalMouse		mSignalMouseDown, mSignalMouseDrag, mSignalMouseUp, mSignalMouseWheel, mSignalMouseMove, mSignalGestureMagnify;
 	EventSignalTouch		mSignalTouchesBegan, mSignalTouchesMoved, mSignalTouchesEnded;
 	EventSignalKey			mSignalKeyDown, mSignalKeyUp;
 	EventSignalWindow		mSignalDraw, mSignalPostDraw, mSignalMove, mSignalResize, mSignalDisplayChange, mSignalClose;
