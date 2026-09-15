@@ -138,7 +138,7 @@
 - (void)mouseUp:(cinder::app::MouseEvent *)event;
 - (void)mouseMove:(cinder::app::MouseEvent *)event;
 - (void)mouseWheel:(cinder::app::MouseEvent *)event;
-- (void)gesture:(cinder::app::MouseEvent *)event;
+- (void)gestureMagnify:(cinder::app::MouseEvent *)event;
 - (void)keyDown:(cinder::app::KeyEvent *)event;
 - (void)keyUp:(cinder::app::KeyEvent *)event;
 - (void)touchesBegan:(cinder::app::TouchEvent *)event;
