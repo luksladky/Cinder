@@ -450,15 +450,15 @@ using namespace cinder::app;
 	const float dx = (float)[theEvent scrollingDeltaX] / scale;
 	const float dy = (float)[theEvent scrollingDeltaY] / scale;
 
-	// Deltas are already adjusted for the user's "natural scrolling" preference; we pass the flag through
-	// rather than un-inverting here, so the app decides whether it wants content-space or raw-wheel semantics.
-	const bool inverted = [theEvent isDirectionInvertedFromDevice] ? true : false;
+	// Deltas are already adjusted for the user's "natural scrolling" preference, so they are passed
+	// through as-is: they are the values to apply to content.
 
 	// Legacy combined scalar, preserved bit-for-bit for a detented wheel so existing handlers are unaffected.
 	const float legacy = dx + dy;
 
-	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, legacy, (uint32_t)[theEvent modifierFlags],
-			cinder::vec2( dx, dy ), precise ? true : false, [CinderViewMac gesturePhaseForEvent:theEvent], 0.0f, inverted );
+	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, legacy, (uint32_t)[theEvent modifierFlags] );
+	mouseEvent.setScrollDelta( cinder::vec2( dx, dy ), precise ? true : false );
+	mouseEvent.setGesturePhase( [CinderViewMac gesturePhaseForEvent:theEvent] );
 	[mDelegate mouseWheel:&mouseEvent];
 }
 
@@ -473,8 +473,9 @@ using namespace cinder::app;
 	int mods				= [self prepMouseEventModifiers:theEvent];
 
 	// [theEvent magnification] is the *relative* change for this event, e.g. 0.05 => grow by 5%.
-	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags],
-			cinder::vec2( 0 ), true, [CinderViewMac gesturePhaseForEvent:theEvent], (float)[theEvent magnification], false );
+	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], 0, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
+	mouseEvent.setMagnification( (float)[theEvent magnification] );
+	mouseEvent.setGesturePhase( [CinderViewMac gesturePhaseForEvent:theEvent] );
 	[mDelegate gestureMagnify:&mouseEvent];
 }
 
