@@ -677,6 +677,11 @@ void WindowImplMsw::onTouch( HWND hWnd, WPARAM wParam, LPARAM lParam )
     }
 }
 
+//! Relative magnification attributed to one detent of Windows' Ctrl+wheel pinch mapping. A precision
+//! touchpad reports pinch that way rather than as a true scale, so this is proportional, not measured;
+//! 0.1 matches the ~10%-per-detent step Windows apps conventionally use for Ctrl+wheel zoom.
+static const float MAGNIFICATION_PER_DETENT = 0.1f;
+
 // The struct is declared locally rather than using the SDK's INPUT_MESSAGE_SOURCE so this builds
 // against older Windows SDKs too; the layout (two DWORD-sized enums) is fixed by the API contract.
 struct LocalInputMessageSource { DWORD deviceType; DWORD originId; };
@@ -970,16 +975,15 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			// magnify channel so it never reaches wheel handlers as a scroll.
 			if( touchpad && ( mods & MouseEvent::CTRL_DOWN ) ) {
 				MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y),
-									mods & ~MouseEvent::CTRL_DOWN, 0.0f, static_cast<unsigned int>( wParam ),
-									vec2( 0 ), true, MouseEvent::GesturePhase::NONE,
-									delta * MouseEvent::MSW_MAGNIFICATION_PER_DETENT, false );
+									mods & ~MouseEvent::CTRL_DOWN, 0.0f, static_cast<unsigned int>( wParam ) );
+				event.setMagnification( delta * MAGNIFICATION_PER_DETENT );
 				impl->getWindow()->emitGestureMagnify( &event );
 				break;
 			}
 
 			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), mods,
-								delta, static_cast<unsigned int>( wParam ),
-								vec2( 0, delta ), precise, MouseEvent::GesturePhase::NONE, 0.0f, false );
+								delta, static_cast<unsigned int>( wParam ) );
+			event.setScrollDelta( vec2( 0, delta ), precise );
 			impl->getWindow()->emitMouseWheel( &event );
 		}
 		break;
@@ -992,8 +996,8 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 					( ! isTouchpadDetectionAvailable() && delta != 0.0f && fabsf( delta ) < 1.0f );
 			// Legacy scalar stays 0: existing single-axis handlers must not react to horizontal scroll.
 			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), prepMouseEventModifiers( wParam ),
-								0.0f, static_cast<unsigned int>( wParam ),
-								vec2( delta, 0 ), precise, MouseEvent::GesturePhase::NONE, 0.0f, false );
+								0.0f, static_cast<unsigned int>( wParam ) );
+			event.setScrollDelta( vec2( delta, 0 ), precise );
 			impl->getWindow()->emitMouseWheel( &event );
 		}
 		break;
