@@ -40,6 +40,11 @@ class CI_API MouseEvent : public Event {
 	//! getWheelDelta() by this to recover pixel-domain deltas for 1:1 scrolling.
 	static constexpr float PRECISE_PIXELS_PER_DETENT = 40.0f;
 
+	//! Relative magnification attributed to one detent of Windows' Ctrl+wheel pinch mapping. A precision
+	//! touchpad reports pinch that way rather than as a true scale, so the value is proportional, not
+	//! measured; 0.1 matches the ~10%-per-detent step Windows apps conventionally use for Ctrl+wheel zoom.
+	static constexpr float MSW_MAGNIFICATION_PER_DETENT = 0.1f;
+
 	MouseEvent() : Event(), mInitiator( 0 ), mPos( 0 ), mModifiers( 0 ), mWheelIncrement( 0 ), mNativeModifiers( 0 ),
 		mWheelDelta( 0 ), mMagnification( 0 ), mPhase( GesturePhase::NONE ), mIsPrecise( false ), mDirectionInverted( false )
 	{}
