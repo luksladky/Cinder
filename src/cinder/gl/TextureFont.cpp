@@ -759,6 +759,27 @@ vec2 TextureFont::measureString( const std::string &str, const DrawOptions &opti
 		unordered_map<Font::Glyph, GlyphInfo>::const_iterator glyphInfoIt = mGlyphMap.find( glyphMeasures.back().first );
 		if( glyphInfoIt != mGlyphMap.end() )
 			result += glyphInfoIt->second.mOriginOffset + vec2( glyphInfoIt->second.mTexCoords.getSize() );
+#if defined( CINDER_ANDROID ) || defined( CINDER_LINUX )
+		// Neither component above measures text on this backend, because the atlas is not
+		// laid out the way measureString() assumes.
+		//
+		// Width: every glyph gets a tile as wide as the font's widest glyph plus padding,
+		// not its own width, so the string came out one maximum-width glyph too long. Take
+		// the last glyph's advance instead; the positions already include the same half
+		// pixel the drawing path places glyphs at.
+		//
+		// Height: measureGlyphs() leaves every glyph on the first line at y = 0 and only
+		// advances curY per line, so the origin offset and the tile height cancel and the
+		// result was the last glyph's own box - "0" measured 2px tall. Take the same
+		// ascent + descent that loop advances by, which also stops the answer depending on
+		// which character happens to come last.
+		if( const std::map<Font::Glyph, Font::GlyphMetrics> *metrics = getCachedGlyphMetrics() ) {
+			std::map<Font::Glyph, Font::GlyphMetrics>::const_iterator metricsIt = metrics->find( glyphMeasures.back().first );
+			if( metricsIt != metrics->end() )
+				result.x = glyphMeasures.back().second.x + metricsIt->second.advance.x / 64.0f;
+		}
+		result.y = glyphMeasures.back().second.y + mFont.getAscent() + mFont.getDescent();
+#endif
 		return result;
 	}
 	else {
