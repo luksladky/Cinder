@@ -677,6 +677,54 @@ void WindowImplMsw::onTouch( HWND hWnd, WPARAM wParam, LPARAM lParam )
     }
 }
 
+//! Relative magnification attributed to one detent of Windows' Ctrl+wheel pinch mapping. A precision
+//! touchpad reports pinch that way rather than as a true scale, so this is proportional, not measured;
+//! 0.1 matches the ~10%-per-detent step Windows apps conventionally use for Ctrl+wheel zoom.
+static const float MAGNIFICATION_PER_DETENT = 0.1f;
+
+// The struct is declared locally rather than using the SDK's INPUT_MESSAGE_SOURCE so this builds
+// against older Windows SDKs too; the layout (two DWORD-sized enums) is fixed by the API contract.
+struct LocalInputMessageSource { DWORD deviceType; DWORD originId; };
+typedef BOOL (WINAPI *GetCurrentInputMessageSourceFn)( LocalInputMessageSource* );
+
+//! Resolves GetCurrentInputMessageSource() once. It is Windows 8+, but reporting IMDT_TOUCHPAD as a
+//! deviceType requires Windows 10 1703, so it is looked up dynamically and callers need a fallback.
+GetCurrentInputMessageSourceFn getInputMessageSourceFn()
+{
+	static bool sResolved = false;
+	static GetCurrentInputMessageSourceFn sFn = nullptr;
+	if( ! sResolved ) {
+		sResolved = true;
+		HMODULE user32 = ::GetModuleHandle( TEXT("user32.dll") );
+		if( user32 )
+			*(size_t *)&sFn = (size_t)::GetProcAddress( user32, "GetCurrentInputMessageSource" );
+	}
+	return sFn;
+}
+
+//! Returns whether the OS can tell us the device behind a message at all. When false, callers must
+//! fall back to guessing, and that guess is unreliable in both directions -- so it is only ever used
+//! on systems too old to answer the question properly.
+bool isTouchpadDetectionAvailable()
+{
+	return getInputMessageSourceFn() != nullptr;
+}
+
+//! Returns true when the message currently being processed originated from a precision touchpad.
+bool isTouchpadInputSource()
+{
+	GetCurrentInputMessageSourceFn fn = getInputMessageSourceFn();
+	if( ! fn )
+		return false;
+
+	const DWORD IMDT_TOUCHPAD_VALUE = 0x10; // INPUT_MESSAGE_DEVICE_TYPE::IMDT_TOUCHPAD, Windows 10 1703+
+	LocalInputMessageSource source = { 0, 0 };
+	if( ! (*fn)( &source ) )
+		return false;
+
+	return source.deviceType == IMDT_TOUCHPAD_VALUE;
+}
+
 unsigned int prepMouseEventModifiers( WPARAM wParam )
 {
 	unsigned int result = 0;
@@ -913,8 +961,43 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 		case WM_MOUSEWHEEL: {
 			POINT pt = { ((int)(short)LOWORD(lParam)), ((int)(short)HIWORD(lParam)) };
 			::MapWindowPoints( NULL, mWnd, &pt, 1 );
+			const float delta = GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f;
+			const unsigned int mods = prepMouseEventModifiers( wParam );
+
+			// Ask the OS what device sent this rather than guessing from the magnitude. The old heuristic
+			// ("a real wheel never sends less than one detent") was wrong both ways: a touchpad scrolling
+			// fast exceeds a detent per message, and high-resolution wheel mice routinely send less.
+			const bool touchpad = isTouchpadInputSource();
+			const bool precise = touchpad || ( ! isTouchpadDetectionAvailable() && delta != 0.0f && fabsf( delta ) < 1.0f );
+
+			// A precision touchpad maps pinch-to-zoom onto Ctrl+wheel for legacy apps. Knowing the device
+			// lets us tell that apart from someone genuinely Ctrl+scrolling a mouse, and route it to the
+			// magnify channel so it never reaches wheel handlers as a scroll.
+			if( touchpad && ( mods & MouseEvent::CTRL_DOWN ) ) {
+				MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y),
+									mods & ~MouseEvent::CTRL_DOWN, 0.0f, static_cast<unsigned int>( wParam ) );
+				event.setMagnification( delta * MAGNIFICATION_PER_DETENT );
+				impl->getWindow()->emitGestureMagnify( &event );
+				break;
+			}
+
+			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), mods,
+								delta, static_cast<unsigned int>( wParam ) );
+			event.setScrollDelta( vec2( 0, delta ), precise );
+			impl->getWindow()->emitMouseWheel( &event );
+		}
+		break;
+		case WM_MOUSEHWHEEL: {
+			POINT pt = { ((int)(short)LOWORD(lParam)), ((int)(short)HIWORD(lParam)) };
+			::MapWindowPoints( NULL, mWnd, &pt, 1 );
+			// Positive is scroll-right on Windows; negate so +X matches the macOS/`getWheelDelta()` convention.
+			const float delta = -( GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f );
+			const bool precise = isTouchpadInputSource() ||
+					( ! isTouchpadDetectionAvailable() && delta != 0.0f && fabsf( delta ) < 1.0f );
+			// Legacy scalar stays 0: existing single-axis handlers must not react to horizontal scroll.
 			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), prepMouseEventModifiers( wParam ),
-								GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f, static_cast<unsigned int>( wParam ) );
+								0.0f, static_cast<unsigned int>( wParam ) );
+			event.setScrollDelta( vec2( delta, 0 ), precise );
 			impl->getWindow()->emitMouseWheel( &event );
 		}
 		break;

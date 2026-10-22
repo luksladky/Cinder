@@ -766,6 +766,15 @@ using namespace cinder::app;
 	}
 }
 
+- (void)gestureMagnify:(MouseEvent *)event
+{
+	if( ! ((PlatformCocoa*)Platform::get())->isInsideModalLoop() ) {
+		[mAppImpl setActiveWindow:self];
+		event->setWindow( mWindowRef );
+		mWindowRef->emitGestureMagnify( event );
+	}
+}
+
 - (void)keyDown:(KeyEvent *)event
 {
 	if( ! ((PlatformCocoa*)Platform::get())->isInsideModalLoop() ) {
