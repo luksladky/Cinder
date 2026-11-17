@@ -588,7 +588,12 @@ void WasapiRenderClientImpl::renderAudio()
 	size_t numWriteFramesAvailable = getWriteFramesAvailable();
 
 	while( mNumFramesBuffered < numWriteFramesAvailable ) {
+		const size_t numFramesBufferedBefore = mNumFramesBuffered;
 		mOutputDeviceNode->renderInputs();
+		// renderInputs() renders nothing once the Context is being destroyed. Without this the
+		// render thread would spin here forever, while uninit() waits for it to quit.
+		if( mNumFramesBuffered == numFramesBufferedBefore )
+			return;
 	}
 
 	float *renderBuffer;
