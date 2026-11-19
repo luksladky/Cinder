@@ -34,6 +34,14 @@
 #include <CommDlg.h>
 #include <ShellAPI.h>
 #include <Shlobj.h>
+// The SDK declares DirectManipulation only when targeting Windows 8+, and Cinder targets 7. It is
+// created at runtime and simply fails on older systems (see attachDirectManipulation()).
+#pragma push_macro("NTDDI_VERSION")
+#undef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_WIN8
+#include <directmanipulation.h>
+#pragma pop_macro("NTDDI_VERSION")
+#include <map>
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define LOSHORT(l)           ((SHORT)(l))
@@ -42,6 +50,7 @@
 #undef min
 #undef max
 #pragma comment(lib, "gdiplus")
+#pragma comment(lib, "ole32")
 
 using std::string;
 using std::wstring;
@@ -54,6 +63,265 @@ LRESULT CALLBACK WndProc( HWND mWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 LRESULT CALLBACK BlankingWndProc( HWND mWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 static const wchar_t *WINDOWED_WIN_CLASS_NAME = TEXT("CinderWinClass");
 static const wchar_t *BLANKING_WINDOW_CLASS_NAME = TEXT("CinderBlankingWindow");
+
+// DirectManipulation: precision touchpad pan and pinch.
+//
+// Windows labels touchpad wheel messages IMDT_TOUCHPAD (see isTouchpadInputSource()) on some laptops
+// only. Others label every gesture as a mouse (measured on an ASUS/ELAN touchpad, Windows 11) and turn
+// pinch into whole Ctrl+wheel notches, so WM_MOUSEWHEEL alone cannot tell a touchpad apart there. A
+// DirectManipulation viewport, the API Chrome uses, is handed the touchpad's contacts on every machine:
+// the pan offset and pinch scale come straight from the OS, while mouse wheels keep arriving as
+// WM_MOUSEWHEEL. Windows 10+; where creating it fails, the WM_MOUSEWHEEL path is the only one.
+//
+// Nothing is drawn through the viewport, only its content transform is read and turned into
+// emitMouseWheel() (precise) and emitGestureMagnify(). The state is kept here, by window, rather than
+// in WindowImplMsw, so the public header and apps built against it are unchanged.
+namespace {
+
+const UINT		DM_POINTERHITTEST_MSG = 0x0250;	// DM_POINTERHITTEST; the SDK declares it only for _WIN32_WINNT >= 0x0602
+const UINT_PTR	DM_UPDATE_TIMER_ID = 0xC1DE;	// unique among this window's timers
+const UINT		DM_UPDATE_INTERVAL_MS = 8;		// Windows rounds it up to its timer tick (~16 ms)
+const int		DM_IDLE_TICKS_BEFORE_STOP = 30;	// keeps updating briefly after a contact, until the gesture starts
+const float		DM_VIEWPORT_SIZE = 1000.0f;		// arbitrary, the transform is read relative to it
+const DWORD		PT_TOUCHPAD_VALUE = 5;			// POINTER_INPUT_TYPE::PT_TOUCHPAD
+
+typedef BOOL (WINAPI *GetPointerTypeFn)( UINT32, DWORD* );
+
+//! Resolves GetPointerType() (Windows 8+) once, like getInputMessageSourceFn() below.
+GetPointerTypeFn getPointerTypeFn()
+{
+	static bool sResolved = false;
+	static GetPointerTypeFn sFn = nullptr;
+	if( ! sResolved ) {
+		sResolved = true;
+		HMODULE user32 = ::GetModuleHandle( TEXT("user32.dll") );
+		if( user32 )
+			*(size_t *)&sFn = (size_t)::GetProcAddress( user32, "GetPointerType" );
+	}
+	return sFn;
+}
+
+//! Collects what the viewport reports during IDirectManipulationUpdateManager::Update().
+class DirectManipulationHandler : public IDirectManipulationViewportEventHandler {
+  public:
+	HRESULT STDMETHODCALLTYPE QueryInterface( REFIID riid, void **out ) override
+	{
+		if( riid == __uuidof(IUnknown) || riid == __uuidof(IDirectManipulationViewportEventHandler) ) {
+			*out = static_cast<IDirectManipulationViewportEventHandler*>( this );
+			AddRef();
+			return S_OK;
+		}
+		*out = nullptr;
+		return E_NOINTERFACE;
+	}
+	ULONG STDMETHODCALLTYPE AddRef() override	{ return (ULONG)::InterlockedIncrement( &mRefCount ); }
+	ULONG STDMETHODCALLTYPE Release() override
+	{
+		const LONG count = ::InterlockedDecrement( &mRefCount );
+		if( count == 0 )
+			delete this;
+		return (ULONG)count;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnViewportStatusChanged( IDirectManipulationViewport *viewport, DIRECTMANIPULATION_STATUS current, DIRECTMANIPULATION_STATUS /*previous*/ ) override
+	{
+		if( mResetting ) // the reset below reports status changes of its own
+			return S_OK;
+		mActive = ( current == DIRECTMANIPULATION_RUNNING ) || ( current == DIRECTMANIPULATION_INERTIA );
+		// Back to identity, so every gesture starts at scale 1 and offset 0 (as Chrome does). The content
+		// moves there on a later Update(), and that move is not a gesture: read as one, it scrolled the
+		// whole gesture back the other way on release. The move ends in READY again; resetting then
+		// would wait for an update that never comes, as the content is already there.
+		if( current == DIRECTMANIPULATION_READY && ! isAtIdentity() ) {
+			mResetPending = true;
+			mResetting = true;
+			viewport->ZoomToRect( 0, 0, DM_VIEWPORT_SIZE, DM_VIEWPORT_SIZE, FALSE );
+			mResetting = false;
+		}
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnViewportUpdated( IDirectManipulationViewport* ) override	{ return S_OK; }
+
+	HRESULT STDMETHODCALLTYPE OnContentUpdated( IDirectManipulationViewport*, IDirectManipulationContent *content ) override
+	{
+		float m[6];
+		if( FAILED( content->GetContentTransform( m, 6 ) ) || m[0] <= 0 )
+			return S_OK;
+		const float scale = m[0];
+		const vec2 offset( m[4], m[5] );
+		if( ! mResetPending && ! mResetting ) {
+			// while the scale changes, the offset only keeps the pinch centre in place; it is not a scroll
+			if( scale != mScale )
+				mPendingScale *= scale / mScale;
+			else
+				mPendingPan += offset - mOffset;
+		}
+		mScale = scale;
+		mOffset = offset;
+		if( mResetPending && isAtIdentity() ) // only follow the content until the reset lands
+			mResetPending = false;
+		return S_OK;
+	}
+
+	bool	isAtIdentity() const
+	{
+		return std::abs( mScale - 1.0f ) < 1e-4f && std::abs( mOffset.x ) < 0.5f && std::abs( mOffset.y ) < 0.5f;
+	}
+
+	//! True from the first finger movement until inertia ends.
+	bool	isActive() const	{ return mActive; }
+
+	//! Returns and clears the scale ratio (1 = none) and the pan in pixels gathered since the last call.
+	void	takePending( float *scale, vec2 *pan )
+	{
+		*scale = mPendingScale;
+		*pan = mPendingPan;
+		mPendingScale = 1;
+		mPendingPan = vec2( 0 );
+	}
+
+  private:
+	LONG	mRefCount = 1;
+	bool	mResetting = false;
+	bool	mResetPending = false;	// reset requested, content not back at identity yet
+	bool	mActive = false;
+	float	mScale = 1;
+	float	mPendingScale = 1;
+	vec2	mOffset = vec2( 0 );
+	vec2	mPendingPan = vec2( 0 );
+};
+
+struct DirectManipulation {
+	IDirectManipulationManager			*manager = nullptr;
+	IDirectManipulationUpdateManager	*updateManager = nullptr;
+	IDirectManipulationViewport			*viewport = nullptr;
+	DirectManipulationHandler			*handler = nullptr;
+	DWORD								handlerCookie = 0;
+	int									idleTicks = 0;
+};
+
+std::map<HWND, DirectManipulation> sDirectManipulation;
+
+void releaseDirectManipulation( HWND wnd, DirectManipulation &dm )
+{
+	if( dm.viewport ) {
+		dm.viewport->Stop();
+		if( dm.handlerCookie )
+			dm.viewport->RemoveEventHandler( dm.handlerCookie );
+		dm.viewport->Release();
+	}
+	if( dm.handler )
+		dm.handler->Release();
+	if( dm.updateManager )
+		dm.updateManager->Release();
+	if( dm.manager ) {
+		dm.manager->Deactivate( wnd );
+		dm.manager->Release();
+	}
+	dm = DirectManipulation();
+}
+
+void attachDirectManipulation( HWND wnd )
+{
+	cinder::msw::initializeCom();
+
+	const DIRECTMANIPULATION_CONFIGURATION config = DIRECTMANIPULATION_CONFIGURATION_INTERACTION
+		| DIRECTMANIPULATION_CONFIGURATION_TRANSLATION_X | DIRECTMANIPULATION_CONFIGURATION_TRANSLATION_Y
+		| DIRECTMANIPULATION_CONFIGURATION_TRANSLATION_INERTIA
+		| DIRECTMANIPULATION_CONFIGURATION_RAILS_X | DIRECTMANIPULATION_CONFIGURATION_RAILS_Y
+		| DIRECTMANIPULATION_CONFIGURATION_SCALING;
+	RECT rect = { 0, 0, (LONG)DM_VIEWPORT_SIZE, (LONG)DM_VIEWPORT_SIZE };
+
+	DirectManipulation dm;
+	bool ok = SUCCEEDED( ::CoCreateInstance( __uuidof(DirectManipulationManager), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS( &dm.manager ) ) )
+		&& SUCCEEDED( dm.manager->GetUpdateManager( IID_PPV_ARGS( &dm.updateManager ) ) )
+		&& SUCCEEDED( dm.manager->CreateViewport( nullptr, wnd, IID_PPV_ARGS( &dm.viewport ) ) )
+		&& SUCCEEDED( dm.viewport->ActivateConfiguration( config ) )
+		&& SUCCEEDED( dm.viewport->SetViewportOptions( DIRECTMANIPULATION_VIEWPORT_OPTIONS_MANUALUPDATE ) );
+	if( ok ) {
+		dm.handler = new DirectManipulationHandler;
+		ok = SUCCEEDED( dm.viewport->AddEventHandler( wnd, dm.handler, &dm.handlerCookie ) )
+			&& SUCCEEDED( dm.viewport->SetViewportRect( &rect ) )
+			&& SUCCEEDED( dm.manager->Activate( wnd ) )
+			&& SUCCEEDED( dm.viewport->Enable() );
+	}
+	if( ! ok ) {
+		releaseDirectManipulation( wnd, dm );
+		return;
+	}
+
+	dm.updateManager->Update( nullptr );
+	sDirectManipulation[wnd] = dm;
+}
+
+void detachDirectManipulation( HWND wnd )
+{
+	auto it = sDirectManipulation.find( wnd );
+	if( it == sDirectManipulation.end() )
+		return;
+	::KillTimer( wnd, DM_UPDATE_TIMER_ID );
+	releaseDirectManipulation( wnd, it->second );
+	sDirectManipulation.erase( it );
+}
+
+//! Hands a touchpad contact to the viewport and starts updating it. Returns false for any other
+//! pointer (touch screen, pen), which keeps its default handling.
+bool directManipulationHitTest( HWND wnd, WPARAM wParam )
+{
+	auto it = sDirectManipulation.find( wnd );
+	GetPointerTypeFn getPointerType = getPointerTypeFn();
+	if( it == sDirectManipulation.end() || ! getPointerType )
+		return false;
+
+	const UINT32 pointerId = LOWORD( wParam );	// GET_POINTERID_WPARAM
+	DWORD type = 0;
+	if( ! (*getPointerType)( pointerId, &type ) || type != PT_TOUCHPAD_VALUE )
+		return false;
+	if( FAILED( it->second.viewport->SetContact( pointerId ) ) )
+		return false;
+
+	it->second.idleTicks = 0;
+	::SetTimer( wnd, DM_UPDATE_TIMER_ID, DM_UPDATE_INTERVAL_MS, nullptr );
+	return true;
+}
+
+//! Advances the viewport by one frame and returns the pinch scale ratio and pan in pixels that it
+//! produced. Stops the timer once the gesture, inertia included, is over.
+void directManipulationUpdate( HWND wnd, float *scale, vec2 *pan )
+{
+	*scale = 1;
+	*pan = vec2( 0 );
+	auto it = sDirectManipulation.find( wnd );
+	if( it == sDirectManipulation.end() ) {
+		::KillTimer( wnd, DM_UPDATE_TIMER_ID );
+		return;
+	}
+
+	DirectManipulation &dm = it->second;
+	dm.updateManager->Update( nullptr );
+	dm.handler->takePending( scale, pan );
+	if( dm.handler->isActive() )
+		dm.idleTicks = 0;
+	else if( ++dm.idleTicks > DM_IDLE_TICKS_BEFORE_STOP )
+		::KillTimer( wnd, DM_UPDATE_TIMER_ID );
+}
+
+//! Mouse modifiers from the keyboard state, for events that do not come with a WPARAM of MK_ flags.
+unsigned int currentMouseModifiers()
+{
+	unsigned int result = 0;
+	if( ::GetKeyState( VK_CONTROL ) < 0 ) result |= MouseEvent::CTRL_DOWN;
+	if( ::GetKeyState( VK_SHIFT ) < 0 ) result |= MouseEvent::SHIFT_DOWN;
+	if( ::GetKeyState( VK_MENU ) < 0 ) result |= MouseEvent::ALT_DOWN;
+	if( (::GetKeyState( VK_LWIN ) < 0) || (::GetKeyState( VK_RWIN ) < 0) ) result |= MouseEvent::META_DOWN;
+	if( ::GetKeyState( VK_LBUTTON ) < 0 ) result |= MouseEvent::LEFT_DOWN;
+	if( ::GetKeyState( VK_MBUTTON ) < 0 ) result |= MouseEvent::MIDDLE_DOWN;
+	if( ::GetKeyState( VK_RBUTTON ) < 0 ) result |= MouseEvent::RIGHT_DOWN;
+	return result;
+}
+
+} // anonymous namespace
 
 AppImplMsw::AppImplMsw( AppBase *aApp )
 	: mApp( aApp ), mSetupHasBeenCalled( false ), mActive( true ), mNeedsToRefreshDisplays( false )
@@ -423,6 +691,7 @@ void WindowImplMsw::completeCreation()
 	::DragAcceptFiles( mWnd, TRUE );
 	if( mAppImpl->mApp->isMultiTouchEnabled() )
 		enableMultiTouch();
+	attachDirectManipulation( mWnd );
 
 	::ShowWindow( mWnd, SW_SHOW );
 	::SetForegroundWindow( mWnd );
@@ -845,6 +1114,9 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 	else // the warning on this line is harmless
 		impl = reinterpret_cast<WindowImplMsw*>( ::GetWindowLongPtr( mWnd, GWLP_USERDATA ) );
 
+	if( uMsg == WM_DESTROY )
+		detachDirectManipulation( mWnd );
+
 	if( ! impl )
 		return DefWindowProc( mWnd, uMsg, wParam, lParam );		
 	impl->mAppImpl->setWindow( impl->mWindowRef );
@@ -957,6 +1229,38 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			impl->getWindow()->emitMouseUp( &event );
 			return 0;
 		}
+		break;
+		case DM_POINTERHITTEST_MSG:
+			if( directManipulationHitTest( mWnd, wParam ) )
+				return 0;
+		break;
+		case WM_TIMER:
+			if( wParam == DM_UPDATE_TIMER_ID ) {
+				float scale;
+				vec2 pan;
+				directManipulationUpdate( mWnd, &scale, &pan );
+				if( scale == 1.0f && pan == vec2( 0 ) )
+					return 0;
+
+				POINT pt;
+				::GetCursorPos( &pt );
+				::ScreenToClient( mWnd, &pt );
+				const unsigned int mods = currentMouseModifiers();
+				if( scale != 1.0f ) {
+					MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), mods, 0.0f, 0 );
+					event.setMagnification( scale - 1.0f );
+					impl->getWindow()->emitGestureMagnify( &event );
+				}
+				if( pan != vec2( 0 ) ) {
+					// Same convention as WM_MOUSEWHEEL/WM_MOUSEHWHEEL below: content moving down scrolls up (+Y),
+					// content moving right scrolls left (+X).
+					const vec2 delta = pan / impl->getContentScale() / MouseEvent::PRECISE_PIXELS_PER_DETENT;
+					MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), mods, delta.y, 0 );
+					event.setScrollDelta( delta, true );
+					impl->getWindow()->emitMouseWheel( &event );
+				}
+				return 0;
+			}
 		break;
 		case WM_MOUSEWHEEL: {
 			POINT pt = { ((int)(short)LOWORD(lParam)), ((int)(short)HIWORD(lParam)) };
