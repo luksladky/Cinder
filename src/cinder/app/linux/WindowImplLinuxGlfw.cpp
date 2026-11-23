@@ -29,6 +29,15 @@
 
 namespace cinder { namespace app {
 
+// /proc/self/exe rather than argv[0], so that launching through a symlink gives
+// the same id.
+static std::string getAppId()
+{
+	std::error_code ec;
+	fs::path exe = fs::read_symlink( "/proc/self/exe", ec );
+	return ec ? std::string() : exe.filename().u8string();
+}
+
 WindowImplLinux::WindowImplLinux( const Window::Format &format, WindowImplLinux *sharedRendererWindow, AppImplLinux *appImpl )
 	: mAppImpl( appImpl )
 {
@@ -86,6 +95,15 @@ WindowImplLinux::WindowImplLinux( const Window::Format &format, WindowImplLinux 
 #endif
 
 	::glfwWindowHint( GLFW_SAMPLES, options.getMsaa() );
+
+	// Without these the shell cannot tie the window to its .desktop file, so the
+	// taskbar shows a generic icon and no name: GLFW sends no Wayland app_id
+	// unless asked, and on X11 falls back to the window title for WM_CLASS.
+	// Default to the executable's name, as GTK and Qt do.
+	const std::string appId = getAppId();
+	::glfwWindowHintString( GLFW_WAYLAND_APP_ID, appId.c_str() );
+	::glfwWindowHintString( GLFW_X11_CLASS_NAME, appId.c_str() );
+	::glfwWindowHintString( GLFW_X11_INSTANCE_NAME, appId.c_str() );
 
 	if( mFullScreen ) {
 		cinder::app::DisplayLinux* displayLinux = dynamic_cast<cinder::app::DisplayLinux*>( mDisplay.get() );
