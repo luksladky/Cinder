@@ -28,6 +28,7 @@
 #include "cinder/Display.h"
 #include "cinder/msw/CinderMsw.h"
 #include "cinder/app/msw/PlatformMsw.h"
+#include "cinder/Log.h"
 
 #include <Windows.h>
 #include <windowsx.h>
@@ -61,6 +62,7 @@ namespace cinder { namespace app {
 
 LRESULT CALLBACK WndProc( HWND mWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 LRESULT CALLBACK BlankingWndProc( HWND mWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
+bool isTouchpadDetectionAvailable();
 static const wchar_t *WINDOWED_WIN_CLASS_NAME = TEXT("CinderWinClass");
 static const wchar_t *BLANKING_WINDOW_CLASS_NAME = TEXT("CinderBlankingWindow");
 
@@ -76,6 +78,14 @@ static const wchar_t *BLANKING_WINDOW_CLASS_NAME = TEXT("CinderBlankingWindow");
 // Nothing is drawn through the viewport, only its content transform is read and turned into
 // emitMouseWheel() (precise) and emitGestureMagnify(). The state is kept here, by window, rather than
 // in WindowImplMsw, so the public header and apps built against it are unchanged.
+//
+// Each gesture is either a pinch or a scroll, never both (see DirectManipulationHandler::accumulate()):
+// while the scale changes the content offset moves to keep the pinch centre in place, and after the
+// fingers lift translation inertia carries that movement on. Read as a scroll, it moved the page a
+// long way after every pinch.
+//
+// Where the touchpad's wheel messages are labelled IMDT_TOUCHPAD, the WM_MOUSEWHEEL path already
+// tells pan and pinch apart, so it is kept and DirectManipulation is not used (see touchpadPath()).
 namespace {
 
 const UINT		DM_POINTERHITTEST_MSG = 0x0250;	// DM_POINTERHITTEST; the SDK declares it only for _WIN32_WINNT >= 0x0602
@@ -84,6 +94,67 @@ const UINT		DM_UPDATE_INTERVAL_MS = 8;		// Windows rounds it up to its timer tic
 const int		DM_IDLE_TICKS_BEFORE_STOP = 30;	// keeps updating briefly after a contact, until the gesture starts
 const float		DM_VIEWPORT_SIZE = 1000.0f;		// arbitrary, the transform is read relative to it
 const DWORD		PT_TOUCHPAD_VALUE = 5;			// POINTER_INPUT_TYPE::PT_TOUCHPAD
+
+// Deciding whether a gesture is a pinch or a scroll. Scales are compared as |ln(scale)|, so zooming in
+// and out weigh the same; pans are in viewport pixels.
+const float		DM_PINCH_LOCK_SCALE = 0.07f;		// ~7% of scale makes the gesture a pinch
+const float		DM_PAN_SCALE_TOLERANCE = 0.02f;	// a scroll may drift this much in scale
+const float		DM_PAN_LOCK_PX = 3.0f;			// a scroll this long, with the scale within tolerance, makes it a scroll
+const float		DM_PAN_FORCE_LOCK_PX = 16.0f;		// a scroll this long makes it a scroll whatever the scale did
+const DWORD		TOUCHPAD_PROBE_WINDOW_MS = 1000;	// a wheel message this soon after a touchpad contact came from it
+
+//! How touchpad gestures reach the app. Decided once per process from the first touchpad gesture.
+enum class TouchpadPath { Unknown, Wheel, DirectManipulation };
+TouchpadPath	sTouchpadPath = TouchpadPath::Unknown;
+bool			sTouchpadPathInitialized = false;
+DWORD			sTouchpadContactTick = 0;
+bool			sTouchpadContactPending = false;
+
+const char* touchpadPathName( TouchpadPath path )
+{
+	switch( path ) {
+		case TouchpadPath::Wheel: return "wheel messages";
+		case TouchpadPath::DirectManipulation: return "DirectManipulation";
+		default: return "unknown";
+	}
+}
+
+//! Unknown until the first touchpad gesture, unless the CINDER_MSW_TOUCHPAD environment variable
+//! ("wheel" or "dm") picks it, or Windows cannot label messages at all (before 10 1703).
+TouchpadPath touchpadPath()
+{
+	if( ! sTouchpadPathInitialized ) {
+		sTouchpadPathInitialized = true;
+		const char *env = std::getenv( "CINDER_MSW_TOUCHPAD" );
+		if( env && std::string( env ) == "wheel" )
+			sTouchpadPath = TouchpadPath::Wheel;
+		else if( env && std::string( env ) == "dm" )
+			sTouchpadPath = TouchpadPath::DirectManipulation;
+		else if( ! isTouchpadDetectionAvailable() )
+			sTouchpadPath = TouchpadPath::DirectManipulation;
+		if( sTouchpadPath != TouchpadPath::Unknown )
+			CI_LOG_I( "touchpad: using " << touchpadPathName( sTouchpadPath ) << ( env ? " (CINDER_MSW_TOUCHPAD)" : "" ) );
+	}
+	return sTouchpadPath;
+}
+
+//! Called for every wheel message while the path is unknown. Until then touchpad contacts are left to
+//! Windows, which turns them into wheel messages; how those are labelled decides the path. A labelled
+//! one means WM_MOUSEWHEEL can tell the touchpad apart. An unlabelled one right after a touchpad
+//! contact means the touchpad is reported as a mouse, so its gestures go to DirectManipulation.
+void observeTouchpadWheel( bool labelledTouchpad )
+{
+	if( touchpadPath() != TouchpadPath::Unknown )
+		return;
+	if( labelledTouchpad )
+		sTouchpadPath = TouchpadPath::Wheel;
+	else if( sTouchpadContactPending && ::GetTickCount() - sTouchpadContactTick < TOUCHPAD_PROBE_WINDOW_MS )
+		sTouchpadPath = TouchpadPath::DirectManipulation;
+	else
+		return;
+	sTouchpadContactPending = false;
+	CI_LOG_I( "touchpad: wheel messages " << ( labelledTouchpad ? "are" : "are not" ) << " labelled as touchpad, using " << touchpadPathName( sTouchpadPath ) );
+}
 
 typedef BOOL (WINAPI *GetPointerTypeFn)( UINT32, DWORD* );
 
@@ -123,11 +194,15 @@ class DirectManipulationHandler : public IDirectManipulationViewportEventHandler
 		return (ULONG)count;
 	}
 
-	HRESULT STDMETHODCALLTYPE OnViewportStatusChanged( IDirectManipulationViewport *viewport, DIRECTMANIPULATION_STATUS current, DIRECTMANIPULATION_STATUS /*previous*/ ) override
+	HRESULT STDMETHODCALLTYPE OnViewportStatusChanged( IDirectManipulationViewport *viewport, DIRECTMANIPULATION_STATUS current, DIRECTMANIPULATION_STATUS previous ) override
 	{
 		if( mResetting ) // the reset below reports status changes of its own
 			return S_OK;
 		mActive = ( current == DIRECTMANIPULATION_RUNNING ) || ( current == DIRECTMANIPULATION_INERTIA );
+		// A gesture ends in READY, or in RUNNING again when the fingers land during inertia; the next one
+		// picks its mode afresh.
+		if( current == DIRECTMANIPULATION_READY || ( current == DIRECTMANIPULATION_RUNNING && previous != DIRECTMANIPULATION_RUNNING ) )
+			endGesture();
 		// Back to identity, so every gesture starts at scale 1 and offset 0 (as Chrome does). The content
 		// moves there on a later Update(), and that move is not a gesture: read as one, it scrolled the
 		// whole gesture back the other way on release. The move ends in READY again; resetting then
@@ -153,9 +228,9 @@ class DirectManipulationHandler : public IDirectManipulationViewportEventHandler
 		if( ! mResetPending && ! mResetting ) {
 			// while the scale changes, the offset only keeps the pinch centre in place; it is not a scroll
 			if( scale != mScale )
-				mPendingScale *= scale / mScale;
+				accumulate( scale / mScale, vec2( 0 ) );
 			else
-				mPendingPan += offset - mOffset;
+				accumulate( 1, offset - mOffset );
 		}
 		mScale = scale;
 		mOffset = offset;
@@ -182,7 +257,53 @@ class DirectManipulationHandler : public IDirectManipulationViewportEventHandler
 	}
 
   private:
+	enum class Mode { Undecided, Pinch, Pan };
+
+	//! Passes the gesture's scale or its pan on, never both. Until one of them is clearly meant, both
+	//! are held back. A pinch then passes on the scale held back, so it zooms from where the fingers
+	//! started; a scroll starts from the point it was recognised, as on iOS, so it starts smoothly
+	//! instead of with a jump. The other one is dropped for the rest of the gesture, inertia included.
+	void	accumulate( float scaleRatio, const vec2 &pan )
+	{
+		if( mMode == Mode::Pinch ) {
+			mPendingScale *= scaleRatio;
+			return;
+		}
+		if( mMode == Mode::Pan ) {
+			mPendingPan += pan;
+			return;
+		}
+
+		mUndecidedScale *= scaleRatio;
+		mUndecidedPan += pan;
+		const float scaleChange = std::abs( std::log( mUndecidedScale ) );
+		const float panLength = glm::length( mUndecidedPan );
+		if( scaleChange >= DM_PINCH_LOCK_SCALE )
+			mMode = Mode::Pinch;
+		else if( ( panLength >= DM_PAN_LOCK_PX && scaleChange <= DM_PAN_SCALE_TOLERANCE ) || panLength >= DM_PAN_FORCE_LOCK_PX )
+			mMode = Mode::Pan;
+		else
+			return;
+
+		CI_LOG_V( "touchpad gesture: " << ( mMode == Mode::Pinch ? "pinch" : "scroll" ) << " (scale " << mUndecidedScale << ", pan " << panLength << " px)" );
+		if( mMode == Mode::Pinch )
+			mPendingScale *= mUndecidedScale;
+		mUndecidedScale = 1;
+		mUndecidedPan = vec2( 0 );
+	}
+
+	//! A gesture that was never recognised does nothing.
+	void	endGesture()
+	{
+		mMode = Mode::Undecided;
+		mUndecidedScale = 1;
+		mUndecidedPan = vec2( 0 );
+	}
+
 	LONG	mRefCount = 1;
+	Mode	mMode = Mode::Undecided;
+	float	mUndecidedScale = 1;
+	vec2	mUndecidedPan = vec2( 0 );
 	bool	mResetting = false;
 	bool	mResetPending = false;	// reset requested, content not back at identity yet
 	bool	mActive = false;
@@ -277,6 +398,12 @@ bool directManipulationHitTest( HWND wnd, WPARAM wParam )
 	const UINT32 pointerId = LOWORD( wParam );	// GET_POINTERID_WPARAM
 	DWORD type = 0;
 	if( ! (*getPointerType)( pointerId, &type ) || type != PT_TOUCHPAD_VALUE )
+		return false;
+	// Left to Windows, the contact arrives as wheel messages, which tell how it reports the touchpad
+	// (see observeTouchpadWheel()).
+	sTouchpadContactTick = ::GetTickCount();
+	sTouchpadContactPending = true;
+	if( touchpadPath() != TouchpadPath::DirectManipulation )
 		return false;
 	if( FAILED( it->second.viewport->SetContact( pointerId ) ) )
 		return false;
@@ -1272,6 +1399,7 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			// ("a real wheel never sends less than one detent") was wrong both ways: a touchpad scrolling
 			// fast exceeds a detent per message, and high-resolution wheel mice routinely send less.
 			const bool touchpad = isTouchpadInputSource();
+			observeTouchpadWheel( touchpad );
 			const bool precise = touchpad || ( ! isTouchpadDetectionAvailable() && delta != 0.0f && fabsf( delta ) < 1.0f );
 
 			// A precision touchpad maps pinch-to-zoom onto Ctrl+wheel for legacy apps. Knowing the device
@@ -1296,7 +1424,9 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			::MapWindowPoints( NULL, mWnd, &pt, 1 );
 			// Positive is scroll-right on Windows; negate so +X matches the macOS/`getWheelDelta()` convention.
 			const float delta = -( GET_WHEEL_DELTA_WPARAM( wParam ) / 120.0f );
-			const bool precise = isTouchpadInputSource() ||
+			const bool touchpad = isTouchpadInputSource();
+			observeTouchpadWheel( touchpad );
+			const bool precise = touchpad ||
 					( ! isTouchpadDetectionAvailable() && delta != 0.0f && fabsf( delta ) < 1.0f );
 			// Legacy scalar stays 0: existing single-axis handlers must not react to horizontal scroll.
 			MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), prepMouseEventModifiers( wParam ),
