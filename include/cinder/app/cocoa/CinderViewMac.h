@@ -51,7 +51,7 @@
 - (cinder::app::WindowRef)getWindowRef;
 @optional
 //! Pinch-to-zoom. Optional so existing delegates (AppCocoaView, screen saver) need no change.
-- (void)gestureMagnify:(cinder::app::MouseEvent*)event;
+- (void)gesturePinch:(cinder::app::MouseEvent*)event;
 @end
 
 @interface CinderViewMac : NSView {

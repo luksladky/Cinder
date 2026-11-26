@@ -381,8 +381,8 @@ class CI_API Window : public std::enable_shared_from_this<Window> {
 
 	//! Pinch-to-zoom. Deliberately a separate channel from mouseWheel so existing wheel handlers never
 	//! see it; MouseEvent is reused only as the payload (position + modifiers).
-	EventSignalMouse&	getSignalGestureMagnify() { return mSignalGestureMagnify; }
-	void				emitGestureMagnify( MouseEvent *event );
+	EventSignalMouse&	getSignalGesturePinch() { return mSignalGesturePinch; }
+	void				emitGesturePinch( MouseEvent *event );
 
 	EventSignalTouch&	getSignalTouchesBegan() { return mSignalTouchesBegan; }
 	void				emitTouchesBegan( TouchEvent *event );
@@ -494,7 +494,7 @@ class CI_API Window : public std::enable_shared_from_this<Window> {
 	bool						mValid;
 	std::shared_ptr<void>		mUserData;
 	
-	EventSignalMouse		mSignalMouseDown, mSignalMouseDrag, mSignalMouseUp, mSignalMouseWheel, mSignalMouseMove, mSignalGestureMagnify;
+	EventSignalMouse		mSignalMouseDown, mSignalMouseDrag, mSignalMouseUp, mSignalMouseWheel, mSignalMouseMove, mSignalGesturePinch;
 	EventSignalTouch		mSignalTouchesBegan, mSignalTouchesMoved, mSignalTouchesEnded;
 	EventSignalKey			mSignalKeyDown, mSignalKeyUp;
 	EventSignalWindow		mSignalDraw, mSignalPostDraw, mSignalMove, mSignalResize, mSignalDisplayChange, mSignalClose;

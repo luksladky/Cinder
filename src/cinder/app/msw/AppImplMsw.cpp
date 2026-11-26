@@ -76,7 +76,7 @@ static const wchar_t *BLANKING_WINDOW_CLASS_NAME = TEXT("CinderBlankingWindow");
 // WM_MOUSEWHEEL. Windows 10+; where creating it fails, the WM_MOUSEWHEEL path is the only one.
 //
 // Nothing is drawn through the viewport, only its content transform is read and turned into
-// emitMouseWheel() (precise) and emitGestureMagnify(). The state is kept here, by window, rather than
+// emitMouseWheel() (precise) and emitGesturePinch(). The state is kept here, by window, rather than
 // in WindowImplMsw, so the public header and apps built against it are unchanged.
 //
 // Each gesture is either a pinch or a scroll, never both (see DirectManipulationHandler::accumulate()):
@@ -1376,7 +1376,7 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 				if( scale != 1.0f ) {
 					MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y), mods, 0.0f, 0 );
 					event.setMagnification( scale - 1.0f );
-					impl->getWindow()->emitGestureMagnify( &event );
+					impl->getWindow()->emitGesturePinch( &event );
 				}
 				if( pan != vec2( 0 ) ) {
 					// Same convention as WM_MOUSEWHEEL/WM_MOUSEHWHEEL below: content moving down scrolls up (+Y),
@@ -1404,12 +1404,12 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 
 			// A precision touchpad maps pinch-to-zoom onto Ctrl+wheel for legacy apps. Knowing the device
 			// lets us tell that apart from someone genuinely Ctrl+scrolling a mouse, and route it to the
-			// magnify channel so it never reaches wheel handlers as a scroll.
+			// pinch channel so it never reaches wheel handlers as a scroll.
 			if( touchpad && ( mods & MouseEvent::CTRL_DOWN ) ) {
 				MouseEvent event( impl->getWindow(), 0, impl->toPoints((int)pt.x), impl->toPoints((int)pt.y),
 									mods & ~MouseEvent::CTRL_DOWN, 0.0f, static_cast<unsigned int>( wParam ) );
 				event.setMagnification( delta * MAGNIFICATION_PER_DETENT );
-				impl->getWindow()->emitGestureMagnify( &event );
+				impl->getWindow()->emitGesturePinch( &event );
 				break;
 			}
 

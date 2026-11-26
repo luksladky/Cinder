@@ -217,7 +217,7 @@ class CI_API AppBase {
 	//! Override to receive pinch-to-zoom, with the relative scale in MouseEvent::getMagnification().
 	//! Separate from mouseWheel() so wheel handlers never see pinches. Scrolling is not delivered
 	//! here: a mouse can scroll, so it stays on mouseWheel() carrying the same gesture metadata.
-	virtual void	gestureMagnify( MouseEvent event ) {}
+	virtual void	gesturePinch( MouseEvent event ) {}
 	//! Override to receive mouse-move events.
 	virtual void	mouseMove( MouseEvent event ) {}
 	//! Override to receive mouse-drag events.

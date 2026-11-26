@@ -33,7 +33,7 @@ namespace cinder { namespace app {
 //! Represents a mouse event
 class CI_API MouseEvent : public Event {
   public:
-	//! Phase of a continuous (trackpad) scroll or magnify gesture. Detented mouse wheels always report NONE.
+	//! Phase of a continuous (trackpad) scroll or pinch gesture. Detented mouse wheels always report NONE.
 	enum class GesturePhase { NONE, BEGAN, CHANGED, ENDED, MOMENTUM };
 
 	//! Pixels of precise (trackpad) scrolling treated as equivalent to one wheel detent. Multiply
@@ -92,7 +92,7 @@ class CI_API MouseEvent : public Event {
 	//! Returns whether the event came from a precise device (trackpad / Magic Mouse) rather than a detented wheel.
 	//! Precise events arrive at a much higher rate with fractional deltas, so consumers must scale accordingly.
 	bool		isPreciseScrolling() const	{ return mIsPrecise; }
-	//! Returns the relative magnification for a pinch; 0.05 means "grow by 5%". Only meaningful on gestureMagnify().
+	//! Returns the relative magnification for a pinch; 0.05 means "grow by 5%". Only meaningful on gesturePinch().
 	float		getMagnification() const	{ return mMagnification; }
 	//! Returns the phase of a continuous gesture. Detented wheels always report GesturePhase::NONE.
 	//! \note Platform-asymmetric: macOS reports real phases, but the Windows wheel path cannot and
